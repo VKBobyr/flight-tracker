@@ -1,0 +1,4 @@
+__pycache__/
+.venv/
+flight_tracker.sqlite
+flight_tracker.sqlite-*

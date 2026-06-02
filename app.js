@@ -1,0 +1,1599 @@
+"use strict";
+
+const AIRPORTS = [
+  ["ATL", "Hartsfield-Jackson Atlanta International", "Atlanta", "US"],
+  ["AUS", "Austin-Bergstrom International", "Austin", "US"],
+  ["BNA", "Nashville International", "Nashville", "US"],
+  ["BOS", "Logan International", "Boston", "US"],
+  ["BWI", "Baltimore/Washington International", "Baltimore", "US"],
+  ["CLT", "Charlotte Douglas International", "Charlotte", "US"],
+  ["DCA", "Ronald Reagan Washington National", "Washington", "US"],
+  ["DEN", "Denver International", "Denver", "US"],
+  ["DFW", "Dallas/Fort Worth International", "Dallas", "US"],
+  ["DTW", "Detroit Metropolitan Wayne County", "Detroit", "US"],
+  ["EWR", "Newark Liberty International", "Newark", "US"],
+  ["FLL", "Fort Lauderdale-Hollywood International", "Fort Lauderdale", "US"],
+  ["HNL", "Daniel K. Inouye International", "Honolulu", "US"],
+  ["IAD", "Washington Dulles International", "Washington", "US"],
+  ["IAH", "George Bush Intercontinental", "Houston", "US"],
+  ["JFK", "John F. Kennedy International", "New York", "US"],
+  ["LAS", "Harry Reid International", "Las Vegas", "US"],
+  ["LAX", "Los Angeles International", "Los Angeles", "US"],
+  ["LGA", "LaGuardia", "New York", "US"],
+  ["MCO", "Orlando International", "Orlando", "US"],
+  ["MDW", "Chicago Midway International", "Chicago", "US"],
+  ["MIA", "Miami International", "Miami", "US"],
+  ["MSP", "Minneapolis-Saint Paul International", "Minneapolis", "US"],
+  ["ORD", "O'Hare International", "Chicago", "US"],
+  ["PDX", "Portland International", "Portland", "US"],
+  ["PHL", "Philadelphia International", "Philadelphia", "US"],
+  ["PHX", "Phoenix Sky Harbor International", "Phoenix", "US"],
+  ["SAN", "San Diego International", "San Diego", "US"],
+  ["SEA", "Seattle-Tacoma International", "Seattle", "US"],
+  ["SFO", "San Francisco International", "San Francisco", "US"],
+  ["SJC", "San Jose Mineta International", "San Jose", "US"],
+  ["SLC", "Salt Lake City International", "Salt Lake City", "US"],
+  ["TPA", "Tampa International", "Tampa", "US"],
+  ["YVR", "Vancouver International", "Vancouver", "CA"],
+  ["YYZ", "Toronto Pearson International", "Toronto", "CA"],
+  ["MEX", "Mexico City International", "Mexico City", "MX"],
+  ["CUN", "Cancun International", "Cancun", "MX"],
+  ["LHR", "Heathrow", "London", "GB"],
+  ["LGW", "Gatwick", "London", "GB"],
+  ["CDG", "Charles de Gaulle", "Paris", "FR"],
+  ["ORY", "Paris Orly", "Paris", "FR"],
+  ["AMS", "Amsterdam Schiphol", "Amsterdam", "NL"],
+  ["FRA", "Frankfurt Airport", "Frankfurt", "DE"],
+  ["MAD", "Adolfo Suarez Madrid-Barajas", "Madrid", "ES"],
+  ["BCN", "Josep Tarradellas Barcelona-El Prat", "Barcelona", "ES"],
+  ["FCO", "Leonardo da Vinci-Fiumicino", "Rome", "IT"],
+  ["DUB", "Dublin Airport", "Dublin", "IE"],
+  ["ZRH", "Zurich Airport", "Zurich", "CH"],
+  ["NRT", "Narita International", "Tokyo", "JP"],
+  ["HND", "Tokyo Haneda", "Tokyo", "JP"],
+  ["ICN", "Incheon International", "Seoul", "KR"],
+  ["SIN", "Singapore Changi", "Singapore", "SG"],
+  ["SYD", "Sydney Kingsford Smith", "Sydney", "AU"],
+  ["AKL", "Auckland Airport", "Auckland", "NZ"],
+].map(([code, name, city, country]) => ({ code, name, city, country }));
+
+const AIRLINES = [
+  ["AA", "American Airlines"],
+  ["AS", "Alaska Airlines"],
+  ["B6", "JetBlue"],
+  ["BA", "British Airways"],
+  ["DL", "Delta Air Lines"],
+  ["F9", "Frontier Airlines"],
+  ["HA", "Hawaiian Airlines"],
+  ["LH", "Lufthansa"],
+  ["NK", "Spirit Airlines"],
+  ["QF", "Qantas"],
+  ["QR", "Qatar Airways"],
+  ["SQ", "Singapore Airlines"],
+  ["UA", "United Airlines"],
+  ["VS", "Virgin Atlantic"],
+  ["WN", "Southwest Airlines"],
+].map(([code, name]) => ({ code, name }));
+
+const STORAGE_KEY = "flight-tracker-state-v1";
+const CLIENT_DB_NAME = "flight-tracker-client-db";
+const CLIENT_DB_STORE = "state";
+const CLIENT_DB_KEY = "default";
+const MONITOR_URL_PARAM = "m";
+const TOP_DEAL_LIMIT = 5;
+const TravelWindowLogic = window.TravelWindows;
+
+const state = loadLocalState();
+let clientDbPromise = null;
+let pendingClientDbSave = Promise.resolve();
+let sharedImportPrompted = false;
+let activeSharedMonitors = [];
+let pendingShareImportMonitors = [];
+const draftPairs = [];
+const draftExcludedAirlines = [];
+
+const form = document.querySelector("#monitorForm");
+const originInput = document.querySelector("#originInput");
+const destinationInput = document.querySelector("#destinationInput");
+const originCode = document.querySelector("#originCode");
+const destinationCode = document.querySelector("#destinationCode");
+const originSelected = document.querySelector("#originSelected");
+const destinationSelected = document.querySelector("#destinationSelected");
+const originSuggestions = document.querySelector("#originSuggestions");
+const destinationSuggestions = document.querySelector("#destinationSuggestions");
+const monitorGrid = document.querySelector("#monitorGrid");
+const monitorCount = document.querySelector("#monitorCount");
+const globalDeals = document.querySelector("#globalDeals");
+const lastSweepAt = document.querySelector("#lastSweepAt");
+const sweepProgress = document.querySelector("#sweepProgress");
+const sweepProgressTitle = document.querySelector("#sweepProgressTitle");
+const sweepProgressText = document.querySelector("#sweepProgressText");
+const sweepProgressBar = document.querySelector("#sweepProgressBar");
+const runAllButton = document.querySelector("#runAllButton");
+const shareMonitorsButton = document.querySelector("#shareMonitorsButton");
+const openCreateMonitorButton = document.querySelector("#openCreateMonitorButton");
+const closeCreateMonitorButton = document.querySelector("#closeCreateMonitorButton");
+const createMonitorOverlay = document.querySelector("#createMonitorOverlay");
+const resetButton = document.querySelector("#resetButton");
+const addPairButton = document.querySelector("#addPairButton");
+const pairList = document.querySelector("#pairList");
+const pairCount = document.querySelector("#pairCount");
+const airlineInput = document.querySelector("#airlineInput");
+const airlineCode = document.querySelector("#airlineCode");
+const airlineSelected = document.querySelector("#airlineSelected");
+const airlineSuggestions = document.querySelector("#airlineSuggestions");
+const addAirlineButton = document.querySelector("#addAirlineButton");
+const airlineList = document.querySelector("#airlineList");
+const airlineCount = document.querySelector("#airlineCount");
+const tripMinInput = document.querySelector("#tripMin");
+const tripMaxInput = document.querySelector("#tripMax");
+const startFromInput = document.querySelector("#startFrom");
+const startToInput = document.querySelector("#startTo");
+const maxTripLengthButton = document.querySelector("#maxTripLengthButton");
+const stepperButtons = document.querySelectorAll("[data-step-target]");
+const sweepState = {
+  isSweeping: false,
+  total: 0,
+  completed: 0,
+};
+
+initializeDates();
+bindAirportSearch(originInput, originCode, originSelected, originSuggestions);
+bindAirportSearch(destinationInput, destinationCode, destinationSelected, destinationSuggestions);
+bindAirlineSearch(airlineInput, airlineCode, airlineSelected, airlineSuggestions);
+
+form.addEventListener("submit", addMonitor);
+shareMonitorsButton.addEventListener("click", shareMonitors);
+openCreateMonitorButton.addEventListener("click", openCreateMonitorOverlay);
+closeCreateMonitorButton.addEventListener("click", closeCreateMonitorOverlay);
+createMonitorOverlay.addEventListener("click", (event) => {
+  if (event.target === createMonitorOverlay) closeCreateMonitorOverlay();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && createMonitorOverlay.classList.contains("is-open")) {
+    closeCreateMonitorOverlay();
+  }
+  if (event.key === "Escape" && pendingShareImportMonitors.length) {
+    dismissSharedImport();
+  }
+  if (event.key === "Escape") closeOpenMonitorMenus();
+});
+document.addEventListener("click", (event) => {
+  document.querySelectorAll(".monitor-menu[open]").forEach((menu) => {
+    if (!menu.contains(event.target)) menu.removeAttribute("open");
+  });
+});
+resetButton.addEventListener("click", () => {
+  setTimeout(() => {
+    originCode.value = "";
+    destinationCode.value = "";
+    originSelected.textContent = "No airport selected";
+    destinationSelected.textContent = "No airport selected";
+    draftPairs.length = 0;
+    draftExcludedAirlines.length = 0;
+    clearCurrentAirline();
+    renderDraftPairs();
+    renderDraftExcludedAirlines();
+    initializeDates();
+    clampTripLengthsToDateBounds();
+  }, 0);
+});
+addPairButton.addEventListener("click", addDraftPair);
+addAirlineButton.addEventListener("click", addDraftExcludedAirline);
+stepperButtons.forEach((button) => button.addEventListener("click", handleStepperClick));
+maxTripLengthButton.addEventListener("click", setTripMaxToDateBounds);
+tripMinInput.addEventListener("input", clampTripLengthsToDateBounds);
+tripMaxInput.addEventListener("input", clampTripLengthsToDateBounds);
+startFromInput.addEventListener("change", clampTripLengthsToDateBounds);
+startToInput.addEventListener("change", clampTripLengthsToDateBounds);
+runAllButton.addEventListener("click", () => runSweepForAll(true));
+
+renderDraftPairs();
+renderDraftExcludedAirlines();
+clampTripLengthsToDateBounds();
+render();
+setTimeout(promptForSharedMonitors, 0);
+hydrateStateFromClientDb();
+
+function loadLocalState() {
+  try {
+    const storedState = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return normalizeState({
+      monitors: storedState?.monitors || [],
+      sweepData: storedState?.sweepData || sweepDataFromLegacyMonitors(storedState?.monitors),
+      lastSweepAt: storedState?.lastSweepAt,
+    });
+  } catch (error) {
+    console.warn("Could not load saved flight tracker state.", error);
+  }
+  return normalizeState({ monitors: [], sweepData: {}, lastSweepAt: null });
+}
+
+function saveState() {
+  state.monitors = state.monitors.map(normalizeMonitor);
+  state.monitors.forEach(updateSweepStorageForMonitor);
+  state.lastGlobalDeals = computeGlobalDeals();
+  const snapshot = JSON.stringify(storageState(state));
+  localStorage.setItem(STORAGE_KEY, snapshot);
+  queueClientDbSave(snapshot);
+}
+
+async function hydrateStateFromClientDb() {
+  try {
+    const storedState = await readClientState();
+    if (!storedState) {
+      saveState();
+      promptForSharedMonitors();
+      return;
+    }
+    const normalized = normalizeState({
+      ...storedState,
+      monitors: storedState.monitors || state.monitors,
+      sweepData: storedState.sweepData || sweepDataFromLegacyMonitors(storedState.monitors),
+    });
+    if (!normalized.monitors.length && state.monitors.length) {
+      saveState();
+      promptForSharedMonitors();
+      return;
+    }
+    replaceState(normalized);
+    saveState();
+    render();
+    promptForSharedMonitors();
+  } catch (error) {
+    console.warn("Could not load IndexedDB flight tracker state.", error);
+    promptForSharedMonitors();
+  }
+}
+
+function queueClientDbSave(snapshot) {
+  pendingClientDbSave = pendingClientDbSave
+    .catch(() => {})
+    .then(() => writeClientState(snapshot));
+}
+
+async function readClientState() {
+  if (!("indexedDB" in window)) return null;
+  const database = await openClientDb();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(CLIENT_DB_STORE, "readonly");
+    const request = transaction.objectStore(CLIENT_DB_STORE).get(CLIENT_DB_KEY);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function writeClientState(snapshot) {
+  if (!("indexedDB" in window)) return;
+  const database = await openClientDb();
+  const value = storageState(JSON.parse(snapshot));
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(CLIENT_DB_STORE, "readwrite");
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.objectStore(CLIENT_DB_STORE).put(value, CLIENT_DB_KEY);
+  });
+}
+
+function openClientDb() {
+  if (clientDbPromise) return clientDbPromise;
+  clientDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(CLIENT_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(CLIENT_DB_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return clientDbPromise;
+}
+
+function replaceState(nextState) {
+  const normalized = normalizeState(nextState);
+  state.monitors = normalized.monitors;
+  state.sweepData = normalized.sweepData;
+  state.lastGlobalDeals = normalized.lastGlobalDeals;
+  state.lastSweepAt = normalized.lastSweepAt;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(storageState(normalized)));
+}
+
+function storageState(value) {
+  return {
+    monitors: (value.monitors || []).map(shareableMonitorConfig),
+    sweepData: value.sweepData || {},
+    lastSweepAt: value.lastSweepAt || null,
+  };
+}
+
+function sweepDataFromLegacyMonitors(monitors) {
+  if (!Array.isArray(monitors)) return {};
+  return monitors.reduce((records, monitor) => {
+    const normalized = normalizeMonitor({ ...monitor });
+    if (normalized.topDeals.length || normalized.lastRunAt) {
+      records[normalized.configSignature] = {
+        topDeals: normalized.topDeals.map(sanitizeClientDeal),
+        lastRunAt: normalized.lastRunAt,
+        combinationCount: normalized.combinationCount,
+      };
+    }
+    return records;
+  }, {});
+}
+
+function updateSweepStorageForMonitor(monitor) {
+  normalizeMonitor(monitor);
+  const hasSweepData = monitor.topDeals.length || monitor.lastRunAt;
+  if (!hasSweepData) return;
+  state.sweepData[monitor.configSignature] = {
+    topDeals: monitor.topDeals.map(sanitizeClientDeal),
+    lastRunAt: monitor.lastRunAt,
+    combinationCount: monitor.combinationCount,
+  };
+}
+
+function attachStoredSweepData(monitor, sweepData) {
+  monitor.configSignature = monitorConfigSignature(monitor);
+  const record = sweepData[monitor.configSignature];
+  if (!record) {
+    monitor.history = [];
+    monitor.topDeals = [];
+    monitor.lastRunAt = null;
+    monitor.combinationCount = undefined;
+    return monitor;
+  }
+  monitor.history = [];
+  monitor.topDeals = Array.isArray(record.topDeals) ? record.topDeals.map(sanitizeClientDeal) : [];
+  monitor.lastRunAt = record.lastRunAt || null;
+  monitor.combinationCount = record.combinationCount;
+  return monitor;
+}
+
+function monitorConfigSignature(monitor) {
+  const config = shareableMonitorConfig(normalizeMonitorShape({ ...monitor }));
+  return JSON.stringify({
+    ...config,
+    pairs: config.pairs.slice().sort((a, b) => `${a.origin}-${a.destination}`.localeCompare(`${b.origin}-${b.destination}`)),
+    excludedAirlines: config.excludedAirlines.slice().sort(),
+  });
+}
+
+function normalizeMonitorShape(monitor) {
+  if (!Array.isArray(monitor.pairs)) {
+    monitor.pairs = monitor.origin && monitor.destination
+      ? [{ origin: monitor.origin, destination: monitor.destination }]
+      : [];
+  }
+  monitor.pairs = uniquePairs(monitor.pairs)
+    .map((pair) => ({
+      origin: String(pair.origin || "").trim().toUpperCase(),
+      destination: String(pair.destination || "").trim().toUpperCase(),
+    }))
+    .filter((pair) => pair.origin && pair.destination && pair.origin !== pair.destination);
+  monitor.excludedAirlines = Array.isArray(monitor.excludedAirlines)
+    ? uniqueValues(monitor.excludedAirlines.map((code) => String(code || "").trim().toUpperCase()))
+    : [];
+  monitor.startFrom = coerceDateInput(monitor.startFrom, TravelWindowLogic.toDateInput(TravelWindowLogic.addDays(new Date(), 30)));
+  monitor.startTo = coerceDateInput(monitor.startTo, TravelWindowLogic.toDateInput(TravelWindowLogic.addDays(new Date(), 90)));
+  if (new Date(`${monitor.startFrom}T00:00:00`) > new Date(`${monitor.startTo}T00:00:00`)) {
+    [monitor.startFrom, monitor.startTo] = [monitor.startTo, monitor.startFrom];
+  }
+  const maxBound = TravelWindowLogic.maxTripLengthForRange(monitor.startFrom, monitor.startTo);
+  monitor.tripMin = Math.min(Math.max(0, Math.trunc(Number(monitor.tripMin) || 0)), maxBound);
+  monitor.tripMax = Math.min(Math.max(0, Math.trunc(Number(monitor.tripMax) || 0)), maxBound);
+  return monitor;
+}
+
+function coerceDateInput(value, fallback) {
+  const candidate = String(value || "");
+  return /^\d{4}-\d{2}-\d{2}$/.test(candidate) && Number.isFinite(new Date(`${candidate}T00:00:00`).getTime())
+    ? candidate
+    : fallback;
+}
+
+function normalizeState(value) {
+  const monitors = value && Array.isArray(value.monitors) ? value.monitors.map(normalizeMonitor) : [];
+  const sweepData = value && value.sweepData && typeof value.sweepData === "object" ? value.sweepData : {};
+  const sweepTime = value && value.lastSweepAt ? String(value.lastSweepAt) : null;
+  monitors.forEach((monitor) => attachStoredSweepData(monitor, sweepData));
+  const lastGlobalDeals = monitors.flatMap((monitor) => monitor.topDeals.map((deal) => ({ ...deal })))
+    .sort(compareDeals)
+    .slice(0, TOP_DEAL_LIMIT);
+  return { monitors, sweepData, lastGlobalDeals, lastSweepAt: sweepTime };
+}
+
+function readMonitorsFromUrl() {
+  const encoded = new URLSearchParams(window.location.search).get(MONITOR_URL_PARAM);
+  if (!encoded) return null;
+  try {
+    const decoded = jsonFromBase64Url(encoded);
+    return monitorsFromSharePayload(decoded);
+  } catch (error) {
+    console.warn("Could not read monitor setup from URL.", error);
+    return null;
+  }
+}
+
+function buildShareUrl(monitors) {
+  const url = new URL(window.location.href);
+  const params = url.searchParams;
+  const shareableMonitors = monitors.map(shareableMonitorConfig);
+  if (shareableMonitors.length) {
+    params.set(MONITOR_URL_PARAM, jsonToBase64Url(sharePayloadFromMonitors(shareableMonitors)));
+  } else {
+    params.delete(MONITOR_URL_PARAM);
+  }
+  url.search = params.toString();
+  return url.toString();
+}
+
+function clearSharedMonitorUrl() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has(MONITOR_URL_PARAM)) return;
+  params.delete(MONITOR_URL_PARAM);
+  const nextUrl = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+  window.history.replaceState(null, "", nextUrl);
+}
+
+function shareableMonitorConfig(monitor) {
+  return {
+    pairs: monitor.pairs,
+    startFrom: monitor.startFrom,
+    startTo: monitor.startTo,
+    tripMin: monitor.tripMin,
+    tripMax: monitor.tripMax,
+    excludedAirlines: monitor.excludedAirlines,
+  };
+}
+
+function sharePayloadFromMonitors(monitors) {
+  return {
+    v: 2,
+    m: monitors.map((monitor) => [
+      monitor.pairs.map((pair) => [pair.origin, pair.destination]),
+      monitor.startFrom,
+      monitor.startTo,
+      monitor.tripMin,
+      monitor.tripMax,
+      monitor.excludedAirlines,
+    ]),
+  };
+}
+
+function monitorsFromSharePayload(payload) {
+  if (Array.isArray(payload?.monitors)) return payload.monitors;
+  if (payload?.v !== 2 || !Array.isArray(payload.m)) return null;
+  return payload.m.map(([pairs, startFrom, startTo, tripMin, tripMax, excludedAirlines]) => ({
+    pairs: Array.isArray(pairs)
+      ? pairs.map(([origin, destination]) => ({ origin, destination }))
+      : [],
+    startFrom,
+    startTo,
+    tripMin,
+    tripMax,
+    excludedAirlines: Array.isArray(excludedAirlines) ? excludedAirlines : [],
+  }));
+}
+
+async function shareMonitors() {
+  if (!state.monitors.length) {
+    showToast("Add a monitor before sharing.");
+    return;
+  }
+  const shareUrl = buildShareUrl(state.monitors);
+  try {
+    if (!navigator.clipboard || !window.isSecureContext) throw new Error("Clipboard unavailable");
+    await navigator.clipboard.writeText(shareUrl);
+    confirmShareLinkCopied();
+  } catch (error) {
+    window.prompt("Copy this share link:", shareUrl);
+    temporarilyConfirmShareButton("Link ready");
+    showToast("Share link ready to copy.");
+  }
+}
+
+function confirmShareLinkCopied() {
+  temporarilyConfirmShareButton("Link copied");
+  showToast("Link copied.");
+}
+
+function temporarilyConfirmShareButton(label) {
+  const originalText = shareMonitorsButton.textContent;
+  shareMonitorsButton.textContent = label;
+  window.setTimeout(() => {
+    shareMonitorsButton.textContent = originalText;
+  }, 1800);
+}
+
+function promptForSharedMonitors() {
+  activeSharedMonitors = readMonitorsFromUrl() || [];
+  if (sharedImportPrompted || !activeSharedMonitors.length) return;
+  let incoming;
+  try {
+    incoming = normalizeState({ monitors: activeSharedMonitors, sweepData: state.sweepData }).monitors;
+  } catch (error) {
+    clearSharedMonitorUrl();
+    showToast("Could not import that share link.");
+    console.warn("Could not normalize shared monitors.", error);
+    return;
+  }
+  if (!incoming.length) {
+    clearSharedMonitorUrl();
+    showToast("That share link did not include any valid monitors.");
+    return;
+  }
+  sharedImportPrompted = true;
+  pendingShareImportMonitors = incoming;
+  render();
+}
+
+function consumeSharedMonitors(mode) {
+  const incoming = normalizeState({ monitors: activeSharedMonitors.length ? activeSharedMonitors : readMonitorsFromUrl() || [], sweepData: state.sweepData }).monitors;
+  if (!incoming.length) {
+    dismissSharedImport();
+    return;
+  }
+
+  if (mode === "replace") {
+    state.monitors = incoming;
+    pruneSweepDataToMonitors(state.monitors);
+  } else {
+    state.monitors = mergeMonitorLists(state.monitors, incoming);
+  }
+  state.monitors = normalizeState({ monitors: state.monitors, sweepData: state.sweepData }).monitors;
+  state.lastGlobalDeals = computeGlobalDeals();
+  state.lastSweepAt = getLatestMonitorRunAt(state.monitors);
+  closeSharedImportPrompt();
+  clearSharedMonitorUrl();
+  saveState();
+  render();
+  showToast(mode === "replace"
+    ? `Replaced with ${formatMonitorCount(incoming.length)}.`
+    : `Combined ${formatMonitorCount(incoming.length)} from the share link.`);
+}
+
+function dismissSharedImport() {
+  closeSharedImportPrompt();
+  clearSharedMonitorUrl();
+  showToast("Kept your current monitors.");
+}
+
+function closeSharedImportPrompt() {
+  pendingShareImportMonitors = [];
+  activeSharedMonitors = [];
+  document.querySelector(".share-import-overlay")?.remove();
+  document.body.classList.remove("modal-open");
+}
+
+function closeOpenMonitorMenus() {
+  document.querySelectorAll(".monitor-menu[open]").forEach((menu) => menu.removeAttribute("open"));
+}
+
+function mergeMonitorLists(existing, incoming) {
+  const merged = [];
+  const seen = new Set();
+  existing.concat(incoming).forEach((monitor) => {
+    const normalized = normalizeMonitor({ ...monitor });
+    if (seen.has(normalized.configSignature)) return;
+    seen.add(normalized.configSignature);
+    merged.push(normalized);
+  });
+  return merged;
+}
+
+function pruneSweepDataToMonitors(monitors) {
+  const signatures = new Set(monitors.map((monitor) => normalizeMonitor(monitor).configSignature));
+  state.sweepData = Object.fromEntries(
+    Object.entries(state.sweepData || {}).filter(([signature]) => signatures.has(signature)),
+  );
+}
+
+function getLatestMonitorRunAt(monitors) {
+  return monitors
+    .map((monitor) => monitor.lastRunAt)
+    .filter(Boolean)
+    .sort((a, b) => new Date(b) - new Date(a))[0] || null;
+}
+
+function jsonToBase64Url(value) {
+  return base64UrlEncode(asciiBytes(JSON.stringify(value)));
+}
+
+function jsonFromBase64Url(value) {
+  const bytes = base64UrlDecode(String(value));
+  let json = "";
+  bytes.forEach((byte) => {
+    json += String.fromCharCode(byte);
+  });
+  return JSON.parse(json);
+}
+
+function initializeDates() {
+  const today = new Date();
+  const startFrom = TravelWindowLogic.addDays(today, 30);
+  const startTo = TravelWindowLogic.addDays(today, 90);
+  startFromInput.value = TravelWindowLogic.toDateInput(startFrom);
+  startToInput.value = TravelWindowLogic.toDateInput(startTo);
+}
+
+function bindAirportSearch(input, codeField, selectedText, menu) {
+  input.addEventListener("input", () => {
+    codeField.value = "";
+    selectedText.textContent = "No airport selected";
+    renderSuggestions(input.value, menu, (airport) => {
+      input.value = `${airport.code} - ${airport.city}`;
+      codeField.value = airport.code;
+      selectedText.textContent = `${airport.name}, ${airport.city}, ${airport.country}`;
+      menu.classList.remove("is-open");
+    });
+  });
+
+  input.addEventListener("focus", () => renderSuggestions(input.value, menu, (airport) => {
+    input.value = `${airport.code} - ${airport.city}`;
+    codeField.value = airport.code;
+    selectedText.textContent = `${airport.name}, ${airport.city}, ${airport.country}`;
+    menu.classList.remove("is-open");
+  }));
+
+  document.addEventListener("click", (event) => {
+    if (!menu.contains(event.target) && event.target !== input) {
+      menu.classList.remove("is-open");
+    }
+  });
+}
+
+function bindAirlineSearch(input, codeField, selectedText, menu) {
+  input.addEventListener("input", () => {
+    codeField.value = "";
+    selectedText.textContent = "No airline selected";
+    renderAirlineSuggestions(input.value, menu, (airline) => {
+      setAirline(airline);
+      menu.classList.remove("is-open");
+    });
+  });
+
+  input.addEventListener("focus", () => renderAirlineSuggestions(input.value, menu, (airline) => {
+    setAirline(airline);
+    menu.classList.remove("is-open");
+  }));
+
+  document.addEventListener("click", (event) => {
+    if (!menu.contains(event.target) && event.target !== input) {
+      menu.classList.remove("is-open");
+    }
+  });
+}
+
+function renderSuggestions(query, menu, onSelect) {
+  const matches = findAirports(query).slice(0, 7);
+  menu.innerHTML = "";
+
+  if (!matches.length) {
+    menu.classList.remove("is-open");
+    return;
+  }
+
+  matches.forEach((airport) => {
+    const option = document.createElement("button");
+    option.className = "suggestion";
+    option.type = "button";
+    option.setAttribute("role", "option");
+    option.innerHTML = `
+      <span class="suggestion-code">${airport.code}</span>
+      <span>
+        <span class="suggestion-name">${airport.name}</span>
+        <span class="suggestion-city">${airport.city}, ${airport.country}</span>
+      </span>
+    `;
+    option.addEventListener("click", () => onSelect(airport));
+    menu.appendChild(option);
+  });
+
+  menu.classList.add("is-open");
+}
+
+function renderAirlineSuggestions(query, menu, onSelect) {
+  const matches = findAirlines(query).slice(0, 7);
+  menu.innerHTML = "";
+
+  if (!matches.length) {
+    menu.classList.remove("is-open");
+    return;
+  }
+
+  matches.forEach((airline) => {
+    const option = document.createElement("button");
+    option.className = "suggestion";
+    option.type = "button";
+    option.setAttribute("role", "option");
+    option.innerHTML = `
+      <span class="suggestion-code">${airline.code}</span>
+      <span>
+        <span class="suggestion-name">${airline.name}</span>
+        <span class="suggestion-city">Airline</span>
+      </span>
+    `;
+    option.addEventListener("click", () => onSelect(airline));
+    menu.appendChild(option);
+  });
+
+  menu.classList.add("is-open");
+}
+
+function findAirports(query) {
+  const normalized = normalize(query);
+  if (!normalized) {
+    return AIRPORTS.slice(0, 7);
+  }
+
+  return AIRPORTS
+    .map((airport) => ({ airport, score: airportScore(airport, normalized) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.airport.code.localeCompare(b.airport.code))
+    .map((entry) => entry.airport);
+}
+
+function findAirlines(query) {
+  const normalized = normalize(query);
+  if (!normalized) {
+    return AIRLINES.slice(0, 7);
+  }
+
+  return AIRLINES
+    .map((airline) => ({ airline, score: airlineScore(airline, normalized) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.airline.code.localeCompare(b.airline.code))
+    .map((entry) => entry.airline);
+}
+
+function airportScore(airport, query) {
+  const fields = [airport.code, airport.city, airport.name, airport.country].map(normalize);
+  let score = 0;
+  fields.forEach((field, index) => {
+    if (field === query) score += 100 - index;
+    if (field.startsWith(query)) score += 70 - index;
+    if (field.includes(query)) score += 35 - index;
+    if (isSubsequence(query, field)) score += 18 - index;
+  });
+  return score;
+}
+
+function airlineScore(airline, query) {
+  const fields = [airline.code, airline.name].map(normalize);
+  let score = 0;
+  fields.forEach((field, index) => {
+    if (field === query) score += 100 - index;
+    if (field.startsWith(query)) score += 70 - index;
+    if (field.includes(query)) score += 35 - index;
+    if (isSubsequence(query, field)) score += 18 - index;
+  });
+  return score;
+}
+
+function normalize(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isSubsequence(needle, haystack) {
+  let cursor = 0;
+  for (const character of haystack) {
+    if (character === needle[cursor]) cursor += 1;
+    if (cursor === needle.length) return true;
+  }
+  return false;
+}
+
+function addMonitor(event) {
+  event.preventDefault();
+  const monitor = readMonitorForm();
+  if (!monitor) return;
+  state.monitors.unshift(monitor);
+  saveState();
+  render();
+  form.reset();
+  originCode.value = "";
+  destinationCode.value = "";
+  originSelected.textContent = "No airport selected";
+  destinationSelected.textContent = "No airport selected";
+  draftPairs.length = 0;
+  draftExcludedAirlines.length = 0;
+  clearCurrentAirline();
+  renderDraftPairs();
+  renderDraftExcludedAirlines();
+  initializeDates();
+  clampTripLengthsToDateBounds();
+  closeCreateMonitorOverlay();
+  showToast(`Monitoring ${formatPairCount(monitor.pairs.length)}.`);
+}
+
+function openCreateMonitorOverlay() {
+  createMonitorOverlay.hidden = false;
+  createMonitorOverlay.classList.add("is-open");
+  createMonitorOverlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  originInput.focus({ preventScroll: true });
+}
+
+function closeCreateMonitorOverlay() {
+  createMonitorOverlay.classList.remove("is-open");
+  createMonitorOverlay.setAttribute("aria-hidden", "true");
+  createMonitorOverlay.hidden = true;
+  document.body.classList.remove("modal-open");
+  openCreateMonitorButton.focus();
+}
+
+function readMonitorForm() {
+  clampTripLengthsToDateBounds();
+  const pairs = getMonitorPairsFromForm();
+  const startFrom = startFromInput.value;
+  const startTo = startToInput.value;
+  const tripMin = Number(tripMinInput.value);
+  const tripMax = Number(tripMaxInput.value);
+  const excludedAirlines = getExcludedAirlinesFromForm();
+
+  if (!pairs.length) {
+    showToast("Add at least one airport pair.");
+    return null;
+  }
+  if (new Date(startFrom) > new Date(startTo)) {
+    showToast("Latest end needs to be after earliest start.");
+    return null;
+  }
+  if (tripMin < 0 || tripMax < 0) {
+    showToast("Trip lengths need to be at least 0 days.");
+    return null;
+  }
+
+  return {
+    id: makeId(),
+    pairs,
+    startFrom,
+    startTo,
+    tripMin,
+    tripMax,
+    excludedAirlines,
+    createdAt: new Date().toISOString(),
+    lastRunAt: null,
+    history: [],
+    topDeals: [],
+  };
+}
+
+function getExcludedAirlinesFromForm() {
+  const airlines = draftExcludedAirlines.slice();
+  const code = airlineCode.value;
+  if (code) airlines.push(code);
+  return uniqueValues(airlines);
+}
+
+function handleStepperClick(event) {
+  const target = document.querySelector(`#${event.currentTarget.dataset.stepTarget}`);
+  const step = Number(event.currentTarget.dataset.step);
+  const current = Number(target.value) || 0;
+  target.value = Math.max(0, current + step);
+  clampTripLengthsToDateBounds();
+}
+
+function setTripMaxToDateBounds() {
+  tripMaxInput.value = getDateBoundTripMax();
+  clampTripLengthsToDateBounds();
+}
+
+function clampTripLengthsToDateBounds() {
+  const maxBound = getDateBoundTripMax();
+  tripMinInput.max = String(maxBound);
+  tripMaxInput.max = String(maxBound);
+  tripMinInput.value = clampDayValue(tripMinInput.value, maxBound);
+  tripMaxInput.value = clampDayValue(tripMaxInput.value, maxBound);
+}
+
+function clampDayValue(value, maxBound) {
+  return String(TravelWindowLogic.clampTripLength(value, maxBound));
+}
+
+function getDateBoundTripMax() {
+  if (!startFromInput.value || !startToInput.value) return 0;
+  return TravelWindowLogic.maxTripLengthForRange(startFromInput.value, startToInput.value);
+}
+
+function addDraftExcludedAirline() {
+  const code = airlineCode.value;
+  if (!code) {
+    showToast("Choose an airline from the fuzzy search results.");
+    return;
+  }
+  draftExcludedAirlines.splice(0, draftExcludedAirlines.length, ...uniqueValues(draftExcludedAirlines.concat(code)));
+  clearCurrentAirline();
+  renderDraftExcludedAirlines();
+}
+
+function renderDraftExcludedAirlines() {
+  airlineCount.textContent = `${draftExcludedAirlines.length} excluded`;
+  airlineList.innerHTML = "";
+  if (!draftExcludedAirlines.length) return;
+  draftExcludedAirlines.forEach((code, index) => {
+    const airline = getAirline(code);
+    const row = document.createElement("div");
+    row.className = "pair-chip";
+    row.innerHTML = `<span>${airline.code} · ${airline.name}</span><button type="button" aria-label="Remove ${airline.name}">&times;</button>`;
+    row.querySelector("button").addEventListener("click", () => {
+      draftExcludedAirlines.splice(index, 1);
+      renderDraftExcludedAirlines();
+    });
+    airlineList.appendChild(row);
+  });
+}
+
+function clearCurrentAirline() {
+  airlineInput.value = "";
+  airlineCode.value = "";
+  airlineSelected.textContent = "No airline selected";
+}
+
+function setAirline(airline) {
+  airlineInput.value = `${airline.code} - ${airline.name}`;
+  airlineCode.value = airline.code;
+  airlineSelected.textContent = airline.name;
+}
+
+function getMonitorPairsFromForm() {
+  const pairs = draftPairs.slice();
+  const origin = originCode.value;
+  const destination = destinationCode.value;
+  if (origin || destination) {
+    const pair = readCurrentPair();
+    if (!pair) return [];
+    pairs.push(pair);
+  }
+  return uniquePairs(pairs);
+}
+
+function addDraftPair() {
+  const pair = readCurrentPair();
+  if (!pair) return;
+  const nextPairs = uniquePairs(draftPairs.concat(pair));
+  draftPairs.length = 0;
+  draftPairs.push(...nextPairs);
+  clearCurrentPair();
+  renderDraftPairs();
+}
+
+function readCurrentPair() {
+  const origin = originCode.value;
+  const destination = destinationCode.value;
+
+  if (!origin || !destination) {
+    showToast("Choose both airports from the fuzzy search results.");
+    return null;
+  }
+  if (origin === destination) {
+    showToast("Pick two different airports.");
+    return null;
+  }
+  return { origin, destination };
+}
+
+function uniquePairs(pairs) {
+  const seen = new Set();
+  return pairs.filter((pair) => {
+    const key = `${pair.origin}-${pair.destination}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function renderDraftPairs() {
+  pairCount.textContent = `${draftPairs.length} ${draftPairs.length === 1 ? "pair" : "pairs"} added`;
+  pairList.innerHTML = "";
+  if (!draftPairs.length) return;
+  draftPairs.forEach((pair, index) => {
+    const row = document.createElement("div");
+    row.className = "pair-chip";
+    row.innerHTML = `<span>${pair.origin} → ${pair.destination}</span><button type="button" aria-label="Remove ${pair.origin} to ${pair.destination}">&times;</button>`;
+    row.querySelector("button").addEventListener("click", () => {
+      draftPairs.splice(index, 1);
+      renderDraftPairs();
+    });
+    pairList.appendChild(row);
+  });
+}
+
+function clearCurrentPair() {
+  originInput.value = "";
+  destinationInput.value = "";
+  originCode.value = "";
+  destinationCode.value = "";
+  originSelected.textContent = "No airport selected";
+  destinationSelected.textContent = "No airport selected";
+}
+
+async function runSweepForAll(manual) {
+  if (!state.monitors.length) {
+    showToast("Add at least one monitor first.");
+    return;
+  }
+  if (sweepState.isSweeping) {
+    showToast("A sweep is already running.");
+    return;
+  }
+
+  const monitors = state.monitors.slice();
+  startSweepProgress(monitors.length);
+  try {
+    await Promise.all(monitors.map(async (monitor) => {
+      updateSweepProgress(`Checking ${formatMonitorRoutes(normalizeMonitor(monitor))}`);
+      await runSweep(monitor.id, manual, { deferRender: true });
+      completeSweepProgressStep();
+    }));
+
+    state.lastGlobalDeals = computeGlobalDeals();
+    state.lastSweepAt = new Date().toISOString();
+    saveState();
+    finishSweepProgress();
+    render();
+    showToast("Searches ready.");
+  } catch (error) {
+    finishSweepProgress();
+    showToast(error.message || "Sweep failed.");
+    throw error;
+  }
+}
+
+async function runSweep(monitorId, manual, options = {}) {
+  const monitor = state.monitors.find((entry) => entry.id === monitorId);
+  if (!monitor) return false;
+  normalizeMonitor(monitor);
+
+  const sweep = buildClientSweep(monitor);
+  if (!sweep.topDeals.length) {
+    showToast("No possible trips found for this monitor.");
+    return false;
+  }
+  monitor.lastRunAt = sweep.ranAt;
+  monitor.topDeals = sweep.topDeals;
+  monitor.combinationCount = sweep.combinationCount;
+  updateSweepStorageForMonitor(monitor);
+
+  if (!options.deferRender) {
+    state.lastGlobalDeals = computeGlobalDeals();
+    saveState();
+    render();
+  }
+  return true;
+}
+
+function buildClientSweep(monitor) {
+  const ranAt = new Date().toISOString();
+  const candidates = buildClientSearchCandidates(monitor);
+  return {
+    provider: "client",
+    ranAt,
+    topDeals: candidates.slice(0, TOP_DEAL_LIMIT),
+    candidateCount: candidates.length,
+    combinationCount: countTravelWindows(monitor),
+  };
+}
+
+function sanitizeClientDeal(deal) {
+  return {
+    ...deal,
+    price: null,
+    currency: deal.currency || "USD",
+    airlineName: deal.airlineName || deal.airlineCode || "Check Google Flights for airline",
+    sourceName: deal.sourceName || "Google Flights",
+    sourceUrl: deal.sourceUrl || buildGoogleFlightsUrlFromDeal(deal),
+    provider: "client",
+  };
+}
+
+function buildClientSearchCandidates(monitor) {
+  normalizeMonitor(monitor);
+  return TravelWindowLogic.rankTrips(TravelWindowLogic.enumeratePossibleTrips(monitor))
+    .map((trip) => ({
+      ...trip,
+      price: null,
+      currency: "USD",
+      airlineName: "Check Google Flights for airline",
+      sourceName: "Google Flights",
+      sourceUrl: buildGoogleFlightsUrl(trip.origin, trip.destination, trip.depart, trip.returnDate),
+      provider: "client",
+    }));
+}
+
+function startSweepProgress(total) {
+  sweepState.isSweeping = true;
+  sweepState.total = total;
+  sweepState.completed = 0;
+  runAllButton.disabled = true;
+  runAllButton.textContent = "Sweeping...";
+  sweepProgress.hidden = false;
+  updateSweepProgress("Generating Google Flights searches");
+}
+
+function updateSweepProgress(message) {
+  const percent = sweepState.total ? (sweepState.completed / sweepState.total) * 100 : 0;
+  sweepProgressTitle.textContent = `Sweeping ${formatInteger(sweepState.total)} ${sweepState.total === 1 ? "monitor" : "monitors"}`;
+  sweepProgressText.textContent = `${formatInteger(sweepState.completed)} of ${formatInteger(sweepState.total)} complete · ${message}`;
+  sweepProgressBar.style.width = `${percent}%`;
+}
+
+function completeSweepProgressStep() {
+  sweepState.completed += 1;
+  updateSweepProgress("Collecting results");
+}
+
+function finishSweepProgress() {
+  sweepState.completed = sweepState.total;
+  updateSweepProgress("Searches ready");
+  sweepProgressBar.style.width = "100%";
+  runAllButton.disabled = false;
+  runAllButton.textContent = "Run sweep";
+  setTimeout(() => {
+    if (!sweepState.isSweeping) sweepProgress.hidden = true;
+  }, 900);
+  sweepState.isSweeping = false;
+}
+
+function computeGlobalDeals() {
+  return state.monitors
+    .flatMap((monitor) => monitor.topDeals.map((deal) => ({ ...deal })))
+    .sort(compareDeals)
+    .slice(0, TOP_DEAL_LIMIT);
+}
+
+function compareDeals(a, b) {
+  const aHasPrice = hasPrice(a.price);
+  const bHasPrice = hasPrice(b.price);
+  if (aHasPrice !== bHasPrice) return bHasPrice - aHasPrice;
+  if (aHasPrice && bHasPrice && Number(a.price) !== Number(b.price)) {
+    return Number(a.price) - Number(b.price);
+  }
+  return String(a.depart || "").localeCompare(String(b.depart || ""))
+    || Number(a.length || 0) - Number(b.length || 0)
+    || String(a.route || "").localeCompare(String(b.route || ""));
+}
+
+function hasPrice(value) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+}
+
+function render() {
+  const count = state.monitors.length;
+  monitorCount.textContent = `${formatInteger(count)} ${count === 1 ? "monitor" : "monitors"}`;
+  renderToolbarPriority(count);
+  renderLastSweepAt();
+  renderGlobalDeals();
+  renderMonitors();
+  renderShareImportOverlay();
+}
+
+function renderToolbarPriority(count) {
+  const hasMonitors = count > 0;
+  shareMonitorsButton.disabled = !hasMonitors;
+  shareMonitorsButton.hidden = !hasMonitors;
+  runAllButton.classList.toggle("primary-button", hasMonitors);
+  runAllButton.classList.toggle("ghost-button", !hasMonitors);
+  runAllButton.disabled = !hasMonitors || sweepState.isSweeping;
+  runAllButton.hidden = !hasMonitors;
+}
+
+function renderLastSweepAt() {
+  if (!lastSweepAt) return;
+  lastSweepAt.textContent = state.lastSweepAt ? `Last run ${formatDateTime(state.lastSweepAt)}` : "Not run yet";
+}
+
+function renderGlobalDeals() {
+  const deals = state.lastGlobalDeals || [];
+  globalDeals.innerHTML = "";
+  if (!deals.length) {
+    globalDeals.innerHTML = state.monitors.length
+      ? '<p class="empty-state">Run a sweep to build Google Flights searches across your monitors.</p>'
+      : '<p class="empty-state">Create a monitor to start building flexible-date searches.</p>';
+    return;
+  }
+  deals.forEach((deal) => globalDeals.appendChild(renderDeal(deal)));
+}
+
+function renderDeal(deal) {
+  const template = document.querySelector("#dealTemplate");
+  const node = template.content.firstElementChild.cloneNode(true);
+  node.querySelector(".deal-route").textContent = deal.route;
+  node.querySelector(".deal-airline").textContent = deal.airlineName || deal.airlineCode || "Check Google Flights for airline";
+  node.querySelector(".deal-dates").textContent = `${formatDate(deal.depart)} to ${formatDate(deal.returnDate)}`;
+  node.querySelector(".deal-duration").textContent = formatDayCount(deal.length);
+  node.querySelector(".deal-source").textContent = formatDealSourceName(deal);
+  const price = node.querySelector(".deal-price");
+  if (hasPrice(deal.price)) {
+    price.textContent = formatMoney(deal.price);
+    price.classList.remove("is-unpriced");
+  } else {
+    price.textContent = "Check price";
+    price.classList.add("is-unpriced");
+  }
+  node.href = buildGoogleFlightsUrlFromDeal(deal) || deal.sourceUrl || "https://www.google.com/travel/flights";
+  node.title = "Open this search on Google Flights";
+  return node;
+}
+
+function formatDealSourceName(deal) {
+  return deal.sourceName || "Google Flights";
+}
+
+function buildGoogleFlightsUrlFromDeal(deal) {
+  const [routeOrigin, routeDestination] = String(deal.route || "").split(" → ");
+  const origin = deal.origin || routeOrigin;
+  const destination = deal.destination || routeDestination;
+  if (!origin || !destination || !deal.depart || !deal.returnDate) {
+    return "";
+  }
+  return buildGoogleFlightsUrl(origin, destination, deal.depart, deal.returnDate);
+}
+
+function buildGoogleFlightsUrl(origin, destination, depart, returnDate) {
+  const tfs = encodeGoogleFlightsTfs(origin, destination, depart, returnDate);
+  return `https://www.google.com/travel/flights/search?tfs=${tfs}&hl=en-US&gl=US&curr=USD`;
+}
+
+function encodeGoogleFlightsTfs(origin, destination, depart, returnDate) {
+  const payload = concatBytes(
+    protobufVarintField(1, 28),
+    protobufVarintField(2, 2),
+    protobufBytesField(3, googleFlightsSegment(origin, destination, depart)),
+    protobufBytesField(3, googleFlightsSegment(destination, origin, returnDate)),
+    protobufVarintField(8, 1),
+    protobufVarintField(9, 1),
+    protobufVarintField(14, 1),
+    protobufBytesField(16, protobufVarintField(1, BigInt("18446744073709551615"))),
+    protobufVarintField(19, 1),
+  );
+  return base64UrlEncode(payload);
+}
+
+function googleFlightsSegment(origin, destination, travelDate) {
+  return concatBytes(
+    protobufBytesField(2, asciiBytes(travelDate)),
+    protobufBytesField(13, googleFlightsAirport(origin)),
+    protobufBytesField(14, googleFlightsAirport(destination)),
+  );
+}
+
+function googleFlightsAirport(code) {
+  return concatBytes(
+    protobufVarintField(1, 1),
+    protobufBytesField(2, asciiBytes(code)),
+  );
+}
+
+function protobufVarintField(fieldNumber, value) {
+  return concatBytes(protobufVarint(BigInt(fieldNumber << 3)), protobufVarint(value));
+}
+
+function protobufBytesField(fieldNumber, value) {
+  return concatBytes(protobufVarint(BigInt((fieldNumber << 3) | 2)), protobufVarint(value.length), value);
+}
+
+function protobufVarint(value) {
+  let remaining = BigInt(value);
+  const bytes = [];
+  while (remaining >= 128n) {
+    bytes.push(Number((remaining & 127n) | 128n));
+    remaining >>= 7n;
+  }
+  bytes.push(Number(remaining));
+  return Uint8Array.from(bytes);
+}
+
+function asciiBytes(value) {
+  return Uint8Array.from(String(value).split("").map((character) => character.charCodeAt(0)));
+}
+
+function concatBytes(...chunks) {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const output = new Uint8Array(totalLength);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  });
+  return output;
+}
+
+function base64UrlEncode(bytes) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  let output = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const second = bytes[index + 1];
+    const third = bytes[index + 2];
+    output += alphabet[first >> 2];
+    output += alphabet[((first & 3) << 4) | ((second ?? 0) >> 4)];
+    if (index + 1 < bytes.length) {
+      output += alphabet[((second & 15) << 2) | ((third ?? 0) >> 6)];
+    }
+    if (index + 2 < bytes.length) {
+      output += alphabet[third & 63];
+    }
+  }
+  return output;
+}
+
+function base64UrlDecode(value) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const clean = String(value || "").replace(/=/g, "");
+  const bytes = [];
+  for (let index = 0; index < clean.length; index += 4) {
+    const first = alphabet.indexOf(clean[index]);
+    const second = alphabet.indexOf(clean[index + 1]);
+    const third = alphabet.indexOf(clean[index + 2]);
+    const fourth = alphabet.indexOf(clean[index + 3]);
+    if (first < 0 || second < 0) throw new Error("Invalid base64url payload");
+    bytes.push((first << 2) | (second >> 4));
+    if (third >= 0) bytes.push(((second & 15) << 4) | (third >> 2));
+    if (fourth >= 0) bytes.push(((third & 3) << 6) | fourth);
+  }
+  return Uint8Array.from(bytes);
+}
+
+function renderMonitors() {
+  monitorGrid.innerHTML = "";
+  if (!state.monitors.length) {
+    monitorGrid.innerHTML = `
+      <section class="empty-monitor-hero" aria-label="Create your first monitor">
+        <div class="empty-hero-copy">
+          <p class="eyebrow">Start here</p>
+          <h3>Build flexible Google Flights searches without committing to exact dates.</h3>
+          <p>Add one or more airport pairs, choose your travel window, then run a sweep to generate direct searches you can check on Google Flights.</p>
+        </div>
+        <div class="empty-steps" aria-label="How it works">
+          <div><strong>1</strong><span>Add routes</span><small>Pick one or more airport pairs.</small></div>
+          <div><strong>2</strong><span>Set dates</span><small>Choose start/end bounds and trip length.</small></div>
+          <div><strong>3</strong><span>Run sweep</span><small>Open direct Google Flights searches.</small></div>
+        </div>
+        <button class="ghost-button empty-hero-button" type="button">Create monitor</button>
+      </section>
+    `;
+    monitorGrid.querySelector(".empty-hero-button").addEventListener("click", openCreateMonitorOverlay);
+    return;
+  }
+
+  getPrioritizedMonitors().forEach((monitor) => {
+    normalizeMonitor(monitor);
+    const card = document.createElement("article");
+    card.className = "monitor-card";
+    const travelWindowCount = countTravelWindows(monitor);
+    card.innerHTML = `
+      <header>
+        <div>
+          <h3 class="route-title">${formatMonitorRoutes(monitor)}</h3>
+          <div class="monitor-meta">${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatPairCount(monitor.pairs.length)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</div>
+        </div>
+        <div class="monitor-header-actions">
+          <details class="monitor-menu">
+            <summary aria-label="Monitor actions">…</summary>
+            <div class="monitor-menu-popover">
+              <button class="menu-danger" type="button" data-action="remove">Delete</button>
+            </div>
+          </details>
+        </div>
+      </header>
+      <div class="metric-strip">
+        <div class="metric"><span>Possible trips</span><strong>${formatInteger(travelWindowCount)}</strong></div>
+        <div class="metric"><span>Latest sweep</span><strong>${monitor.lastRunAt ? formatDateTime(monitor.lastRunAt) : "Not run"}</strong></div>
+      </div>
+      <section class="monitor-deals" aria-label="Top searches for this monitor">
+        <div class="monitor-deals-heading">
+          <h4>Top searches for this monitor</h4>
+          <span>${monitor.topDeals.length ? `Top ${monitor.topDeals.length}` : "No sweep yet"}</span>
+        </div>
+        <div class="deals-list"></div>
+      </section>
+    `;
+
+    const dealsList = card.querySelector(".deals-list");
+    if (monitor.topDeals.length) {
+      monitor.topDeals.forEach((deal) => dealsList.appendChild(renderDeal(deal)));
+    } else {
+      dealsList.innerHTML = `<p class="empty-state">Run a sweep to show this monitor’s top ${TOP_DEAL_LIMIT} Google Flights searches.</p>`;
+    }
+
+    card.querySelector('[data-action="remove"]').addEventListener("click", () => removeMonitor(monitor.id));
+    monitorGrid.appendChild(card);
+  });
+}
+
+function renderShareImportOverlay() {
+  const existing = document.querySelector(".share-import-overlay");
+  if (!pendingShareImportMonitors.length) {
+    existing?.remove();
+    return;
+  }
+  if (existing) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay share-import-overlay is-open";
+  overlay.setAttribute("aria-hidden", "false");
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) dismissSharedImport();
+  });
+
+  const panel = document.createElement("section");
+  panel.className = "builder-panel modal-panel share-import-card";
+  panel.setAttribute("aria-label", "Shared monitor import");
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  const hasLocalMonitors = state.monitors.length > 0;
+  panel.innerHTML = `
+    <div class="share-import-header">
+      <div>
+        <p class="eyebrow">Shared dashboard</p>
+        <h3>${hasLocalMonitors ? "Add shared monitors?" : "Import shared monitors?"}</h3>
+      </div>
+      <span class="status-pill">${formatMonitorCount(pendingShareImportMonitors.length)}</span>
+    </div>
+    <p class="share-import-copy">
+      ${hasLocalMonitors
+        ? "Choose how this shared setup should join your saved dashboard."
+        : "This link includes a monitor setup you can save locally."}
+    </p>
+    <div class="share-import-preview"></div>
+    <div class="share-import-actions">
+      <div class="share-choice">
+        <button class="primary-button" type="button" data-share-action="combine">${hasLocalMonitors ? "Combine" : "Import"}</button>
+        <p>${hasLocalMonitors ? "Keep yours and skip duplicates." : "Save these monitors here."}</p>
+      </div>
+      ${hasLocalMonitors ? `
+        <div class="share-choice">
+          <button class="ghost-button" type="button" data-share-action="replace">Replace</button>
+          <p>Use only the shared setup.</p>
+        </div>
+      ` : ""}
+      <div class="share-choice">
+        <button class="ghost-button" type="button" data-share-action="cancel">Keep current</button>
+        <p>Dismiss this share link.</p>
+      </div>
+    </div>
+  `;
+  const preview = panel.querySelector(".share-import-preview");
+  pendingShareImportMonitors.slice(0, 5).forEach((monitor) => {
+    const row = document.createElement("div");
+    row.className = "share-import-row";
+    row.innerHTML = `
+      <strong>${formatMonitorRoutes(monitor)}</strong>
+      <span>${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatExcludedAirlines(monitor.excludedAirlines)}</span>
+    `;
+    preview.appendChild(row);
+  });
+  if (pendingShareImportMonitors.length > 5) {
+    const more = document.createElement("div");
+    more.className = "share-import-row share-import-more";
+    more.textContent = `${formatInteger(pendingShareImportMonitors.length - 5)} more ${pendingShareImportMonitors.length - 5 === 1 ? "monitor" : "monitors"}`;
+    preview.appendChild(more);
+  }
+  panel.querySelector('[data-share-action="combine"]').addEventListener("click", () => consumeSharedMonitors("combine"));
+  panel.querySelector('[data-share-action="replace"]')?.addEventListener("click", () => consumeSharedMonitors("replace"));
+  panel.querySelector('[data-share-action="cancel"]').addEventListener("click", dismissSharedImport);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  document.body.classList.add("modal-open");
+  panel.querySelector('[data-share-action="combine"]').focus({ preventScroll: true });
+}
+
+function getPrioritizedMonitors() {
+  return state.monitors.slice().sort((a, b) => {
+    const bHasData = Number(Boolean(b.lastRunAt));
+    const aHasData = Number(Boolean(a.lastRunAt));
+    if (bHasData !== aHasData) return bHasData - aHasData;
+    return new Date(b.lastRunAt || b.createdAt || 0) - new Date(a.lastRunAt || a.createdAt || 0);
+  });
+}
+
+function countTravelWindows(monitor) {
+  normalizeMonitor(monitor);
+  return TravelWindowLogic.countPossibleTrips(monitor);
+}
+
+function removeMonitor(id) {
+  const monitor = state.monitors.find((entry) => entry.id === id);
+  const label = monitor ? formatMonitorRoutes(normalizeMonitor(monitor)) : "this monitor";
+  if (!window.confirm(`Delete ${label}? This will remove its saved sweep data.`)) return;
+  if (monitor?.configSignature) delete state.sweepData[monitor.configSignature];
+  state.monitors = state.monitors.filter((monitor) => monitor.id !== id);
+  state.lastGlobalDeals = computeGlobalDeals();
+  saveState();
+  render();
+}
+
+function showToast(message) {
+  const existing = document.querySelector(".toast");
+  if (existing) existing.remove();
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4200);
+}
+
+function formatDate(value) {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(`${value}T00:00:00`));
+}
+
+function formatDateTime(value) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatMoney(value) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value) || 0);
+}
+
+function formatInteger(value) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(value) || 0);
+}
+
+function formatDayCount(value) {
+  const days = Number(value) || 0;
+  return `${formatInteger(days)} ${days === 1 ? "day" : "days"}`;
+}
+
+function makeId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return `monitor-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+}
+
+function normalizeMonitor(monitor) {
+  normalizeMonitorShape(monitor);
+  monitor.id = monitor.id || makeId();
+  monitor.createdAt = monitor.createdAt || new Date().toISOString();
+  delete monitor.origin;
+  delete monitor.destination;
+  monitor.history = [];
+  if (!Array.isArray(monitor.topDeals)) monitor.topDeals = [];
+  monitor.topDeals = monitor.topDeals.map(sanitizeClientDeal);
+  monitor.configSignature = monitorConfigSignature(monitor);
+  delete monitor.alertBelow;
+  delete monitor.intervalMinutes;
+  delete monitor.nextRunAt;
+  return monitor;
+}
+
+function formatMonitorRoutes(monitor) {
+  const pairs = monitor.pairs || [];
+  if (!pairs.length) return "No airport pairs";
+  if (pairs.length <= 2) {
+    return pairs.map((pair) => `${pair.origin} → ${pair.destination}`).join(", ");
+  }
+  return `${pairs[0].origin} → ${pairs[0].destination} + ${pairs.length - 1} more`;
+}
+
+function formatPairCount(count) {
+  return `${count} airport ${count === 1 ? "pair" : "pairs"}`;
+}
+
+function formatMonitorCount(count) {
+  return `${formatInteger(count)} ${count === 1 ? "monitor" : "monitors"}`;
+}
+
+function formatExcludedAirlines(codes) {
+  const count = Array.isArray(codes) ? codes.length : 0;
+  if (!count) return "no airline exclusions";
+  return `${count} airline ${count === 1 ? "excluded" : "exclusions"}`;
+}
+
+function getAirline(code) {
+  return AIRLINES.find((airline) => airline.code === code) || { code, name: code };
+}

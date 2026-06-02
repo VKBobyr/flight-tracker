@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Flight Tracker</title>
+    <link rel="stylesheet" href="styles.css?v=2026-06-02-client-only">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">
+            <img src="assets/flight-tracker-logo.png" alt="">
+          </div>
+          <div>
+            <p class="eyebrow">Flexible flight monitoring</p>
+            <h1>Flight Tracker</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-button toolbar-button" id="shareMonitorsButton" type="button">Share dashboard</button>
+          <button class="ghost-button toolbar-button" id="runAllButton" type="button">Run sweep</button>
+        </div>
+      </header>
+
+      <main class="workspace hero-dashboard">
+        <section class="monitors-section" aria-labelledby="monitorsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Watchlist</p>
+              <h2 id="monitorsTitle">Monitors</h2>
+            </div>
+            <div class="section-actions">
+              <span class="status-pill" id="monitorCount">0 monitors</span>
+              <button class="ghost-button section-button" id="openCreateMonitorButton" type="button">Create monitor</button>
+            </div>
+          </div>
+          <div class="monitor-grid" id="monitorGrid"></div>
+        </section>
+
+        <section class="deals-panel" aria-labelledby="dealsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Latest sweep</p>
+              <h2 id="dealsTitle">Searches to check</h2>
+              <p class="panel-subtitle" id="lastSweepAt">Not run yet</p>
+            </div>
+          </div>
+          <div class="sweep-progress" id="sweepProgress" hidden>
+            <div class="sweep-progress-copy">
+              <strong id="sweepProgressTitle">Sweeping monitors</strong>
+              <span id="sweepProgressText">Preparing sweep</span>
+            </div>
+            <div class="sweep-progress-track" aria-hidden="true">
+              <div id="sweepProgressBar"></div>
+            </div>
+          </div>
+          <div class="deals-list" id="globalDeals">
+            <p class="empty-state">Add a monitor, then run a sweep to build Google Flights searches.</p>
+          </div>
+        </section>
+      </main>
+
+      <div class="modal-overlay" id="createMonitorOverlay" aria-hidden="true" hidden>
+        <section class="builder-panel modal-panel" aria-labelledby="builderTitle" role="dialog" aria-modal="true">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Create monitor</p>
+              <h2 id="builderTitle">Route and dates</h2>
+            </div>
+            <button class="icon-button modal-close" id="closeCreateMonitorButton" type="button" aria-label="Close create monitor">×</button>
+          </div>
+
+          <form id="monitorForm" autocomplete="off">
+            <section class="form-section" aria-label="Route">
+              <div class="form-section-heading">
+                <h3>Route</h3>
+                <span id="pairCount">0 pairs added</span>
+              </div>
+              <div class="airport-grid">
+                <label class="field airport-field search-field">
+                  <span>From</span>
+                  <input id="originInput" type="text" placeholder="Airport, city, or code" aria-describedby="originSelected">
+                  <input id="originCode" type="hidden">
+                  <small id="originSelected">No airport selected</small>
+                  <div class="suggestions" id="originSuggestions" role="listbox"></div>
+                </label>
+
+                <label class="field airport-field search-field">
+                  <span>To</span>
+                  <input id="destinationInput" type="text" placeholder="Airport, city, or code" aria-describedby="destinationSelected">
+                  <input id="destinationCode" type="hidden">
+                  <small id="destinationSelected">No airport selected</small>
+                  <div class="suggestions" id="destinationSuggestions" role="listbox"></div>
+                </label>
+              </div>
+
+              <div class="pair-actions action-row">
+                <button class="tertiary-button" id="addPairButton" type="button">
+                  <span aria-hidden="true">+</span>
+                  Add airport pair
+                </button>
+              </div>
+              <div class="pair-list" id="pairList" aria-live="polite"></div>
+            </section>
+
+            <section class="form-section" aria-label="Trip window">
+              <div class="form-section-heading">
+                <h3>Trip window</h3>
+              </div>
+              <div class="form-grid date-grid">
+                <label class="field">
+                  <span>Earliest start</span>
+                  <input id="startFrom" type="date" required>
+                </label>
+                <label class="field">
+                  <span>Latest end</span>
+                  <input id="startTo" type="date" required>
+                </label>
+              </div>
+
+              <fieldset class="trip-length-panel">
+                <legend>Trip length</legend>
+                <div class="trip-rule">
+                  <div class="stepper compact-stepper">
+                    <button class="stepper-button" type="button" data-step-target="tripMin" data-step="-1" aria-label="Decrease minimum trip length">−</button>
+                    <input id="tripMin" type="number" min="0" value="4" required aria-label="Minimum days">
+                    <button class="stepper-button" type="button" data-step-target="tripMin" data-step="1" aria-label="Increase minimum trip length">+</button>
+                  </div>
+                  <span>to</span>
+                  <div class="stepper compact-stepper">
+                    <button class="stepper-button" type="button" data-step-target="tripMax" data-step="-1" aria-label="Decrease maximum trip length">−</button>
+                    <input id="tripMax" type="number" min="0" value="10" required aria-label="Maximum days">
+                    <button class="stepper-button" type="button" data-step-target="tripMax" data-step="1" aria-label="Increase maximum trip length">+</button>
+                  </div>
+                  <span>days</span>
+                  <button class="max-length-button" id="maxTripLengthButton" type="button">Max</button>
+                </div>
+              </fieldset>
+            </section>
+
+            <section class="form-section" aria-label="Exclusions">
+              <div class="form-section-heading">
+                <h3>Exclusions</h3>
+                <span id="airlineCount">0 excluded</span>
+              </div>
+              <div class="airline-filter">
+                <label class="field airline-field search-field">
+                  <span>Exclude airlines</span>
+                  <input id="airlineInput" type="text" placeholder="Airline or code" aria-describedby="airlineSelected">
+                  <input id="airlineCode" type="hidden">
+                  <small id="airlineSelected">No airline selected</small>
+                  <div class="suggestions" id="airlineSuggestions" role="listbox"></div>
+                </label>
+                <button class="tertiary-button" id="addAirlineButton" type="button">
+                  <span aria-hidden="true">+</span>
+                  Exclude airline
+                </button>
+              </div>
+              <div class="pair-list" id="airlineList" aria-live="polite"></div>
+            </section>
+
+            <div class="form-actions action-row">
+              <button class="primary-button" type="submit">Add monitor</button>
+              <button class="ghost-button" id="resetButton" type="reset">Clear</button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+    </div>
+
+    <template id="dealTemplate">
+      <a class="deal-row" target="_blank" rel="noopener noreferrer">
+        <div class="deal-copy">
+          <strong class="deal-route"></strong>
+          <span class="deal-meta">
+            <span class="deal-airline"></span>
+            <span class="deal-dates"></span>
+            <span class="deal-duration"></span>
+          </span>
+        </div>
+        <div class="deal-value">
+          <span class="deal-source"></span>
+          <div class="deal-price"></div>
+        </div>
+      </a>
+    </template>
+
+    <script src="travel-windows.js?v=2026-06-02-window-tests-2"></script>
+    <script src="app.js?v=2026-06-02-window-tests-2"></script>
+  </body>
+</html>

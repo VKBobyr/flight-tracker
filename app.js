@@ -1353,7 +1353,7 @@ function renderMonitors() {
           <div><strong>2</strong><span>Set dates</span><small>Choose start/end bounds and trip length.</small></div>
           <div><strong>3</strong><span>Run sweep</span><small>Open direct Google Flights searches.</small></div>
         </div>
-        <button class="ghost-button empty-hero-button" type="button">Create monitor</button>
+        <button class="primary-button empty-hero-button" type="button">Create monitor</button>
       </section>
     `;
     monitorGrid.querySelector(".empty-hero-button").addEventListener("click", openCreateMonitorOverlay);

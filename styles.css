@@ -139,6 +139,17 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.sweep-action-group {
+  display: grid;
+  justify-items: stretch;
+  gap: 4px;
+}
+
+.sweep-action-status {
+  margin: 0;
+  text-align: center;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.78fr);
@@ -301,9 +312,11 @@ button:disabled {
 .section-heading {
   justify-content: space-between;
   margin-bottom: 16px;
+  min-width: 0;
 }
 
 .section-actions {
+  min-width: 0;
   justify-content: flex-end;
   flex-wrap: wrap;
 }
@@ -343,12 +356,15 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .form-section-heading h3 {
+  min-width: 0;
   font-size: 0.82rem;
   color: var(--ink);
   font-weight: 850;
+  overflow-wrap: anywhere;
 }
 
 .form-section-heading span,
@@ -379,6 +395,8 @@ button:disabled {
 
 .field input,
 .field select {
+  min-width: 0;
+  max-width: 100%;
   width: 100%;
   min-height: 46px;
   border: 1px solid var(--line);
@@ -618,6 +636,7 @@ button:disabled {
 }
 
 .pair-chip {
+  max-width: 100%;
   min-height: 32px;
   display: inline-flex;
   align-items: center;
@@ -630,6 +649,13 @@ button:disabled {
   font-size: 0.82rem;
   font-weight: 820;
   box-shadow: var(--hairline);
+}
+
+.pair-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pair-chip button {
@@ -752,6 +778,7 @@ button:disabled {
 }
 
 .airline-filter {
+  min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
@@ -1274,6 +1301,10 @@ button:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .sweep-action-status {
+    text-align: left;
+  }
+
   .toolbar-button,
   .section-button {
     width: 100%;
@@ -1311,12 +1342,14 @@ button:disabled {
 
   .modal-overlay {
     align-items: start;
-    padding: 14px 10px;
+    padding: 12px 8px;
   }
 
   .modal-panel,
   .share-import-card {
-    width: 100%;
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    min-width: 0;
   }
 
   .share-import-header {
@@ -1336,17 +1369,54 @@ button:disabled {
   }
 
   .airline-filter .tertiary-button {
-    width: fit-content;
-    margin-top: -4px;
+    width: 100%;
+    margin-top: 0;
+  }
+
+  .suggestions {
+    max-height: min(210px, calc(100vh - 260px));
+  }
+
+  .trip-length-panel {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 13px;
+  }
+
+  .trip-length-panel legend {
+    float: left;
+    width: 100%;
+    margin: 0 0 9px;
+    padding: 0;
+    line-height: 1.2;
+  }
+
+  .trip-length-panel legend + * {
+    clear: both;
   }
 
   .trip-rule {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 8px;
+    align-items: center;
   }
 
   .compact-stepper {
-    width: min(100%, 144px);
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
+  }
+
+  .trip-rule > span:last-of-type {
+    grid-column: 1 / 2;
+    justify-self: start;
+  }
+
+  .max-length-button {
+    width: 100%;
+    grid-column: 2 / -1;
   }
 
   .form-actions {
@@ -1386,7 +1456,7 @@ button:disabled {
   .builder-panel,
   .deals-panel,
   .monitors-section {
-    padding: 16px;
+    padding: 14px;
   }
 }
 
@@ -1401,6 +1471,22 @@ button:disabled {
 
   .section-actions {
     grid-template-columns: 1fr;
+  }
+
+  .modal-overlay {
+    padding-inline: 7px;
+  }
+
+  .modal-panel,
+  .share-import-card {
+    width: calc(100vw - 14px);
+    max-width: calc(100vw - 14px);
+  }
+
+  .builder-panel,
+  .deals-panel,
+  .monitors-section {
+    padding: 12px;
   }
 
   .status-pill {

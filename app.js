@@ -79,11 +79,14 @@ const STORAGE_KEY = "flight-tracker-state-v1";
 const CLIENT_DB_NAME = "flight-tracker-client-db";
 const CLIENT_DB_STORE = "state";
 const CLIENT_DB_KEY = "default";
+const CLIENT_ID_KEY = "flight-tracker-client-id-v1";
 const MONITOR_URL_PARAM = "m";
+const SWEEP_API_URL = "/api/sweep";
 const TOP_DEAL_LIMIT = 5;
 const TravelWindowLogic = window.TravelWindows;
 
 const state = loadLocalState();
+const clientId = getClientId();
 let clientDbPromise = null;
 let pendingClientDbSave = Promise.resolve();
 let sharedImportPrompted = false;
@@ -311,7 +314,7 @@ function sweepDataFromLegacyMonitors(monitors) {
     const normalized = normalizeMonitor({ ...monitor });
     if (normalized.topDeals.length || normalized.lastRunAt) {
       records[normalized.configSignature] = {
-        topDeals: normalized.topDeals.map(sanitizeClientDeal),
+        topDeals: normalized.topDeals.map(normalizeDeal),
         lastRunAt: normalized.lastRunAt,
         combinationCount: normalized.combinationCount,
       };
@@ -325,7 +328,7 @@ function updateSweepStorageForMonitor(monitor) {
   const hasSweepData = monitor.topDeals.length || monitor.lastRunAt;
   if (!hasSweepData) return;
   state.sweepData[monitor.configSignature] = {
-    topDeals: monitor.topDeals.map(sanitizeClientDeal),
+    topDeals: monitor.topDeals.map(normalizeDeal),
     lastRunAt: monitor.lastRunAt,
     combinationCount: monitor.combinationCount,
   };
@@ -342,7 +345,7 @@ function attachStoredSweepData(monitor, sweepData) {
     return monitor;
   }
   monitor.history = [];
-  monitor.topDeals = Array.isArray(record.topDeals) ? record.topDeals.map(sanitizeClientDeal) : [];
+  monitor.topDeals = Array.isArray(record.topDeals) ? record.topDeals.map(normalizeDeal) : [];
   monitor.lastRunAt = record.lastRunAt || null;
   monitor.combinationCount = record.combinationCount;
   return monitor;
@@ -1048,15 +1051,21 @@ async function runSweep(monitorId, manual, options = {}) {
   if (!monitor) return false;
   normalizeMonitor(monitor);
 
-  const sweep = buildClientSweep(monitor);
+  const sweep = await fetchPricedSweep(monitor);
   if (!sweep.topDeals.length) {
-    showToast("No possible trips found for this monitor.");
+    showToast("No priced trips found for this monitor.");
     return false;
   }
   monitor.lastRunAt = sweep.ranAt;
-  monitor.topDeals = sweep.topDeals;
+  monitor.topDeals = sweep.topDeals.map(normalizeDeal);
   monitor.combinationCount = sweep.combinationCount;
   updateSweepStorageForMonitor(monitor);
+  if (sweep.provider === "client") {
+    showToast("Live pricing is unavailable here. Showing Google Flights searches instead.");
+  }
+  if (Array.isArray(sweep.providerErrors) && sweep.providerErrors.length) {
+    showToast(`${formatInteger(sweep.providerErrors.length)} live fare ${sweep.providerErrors.length === 1 ? "search" : "searches"} returned partial data.`);
+  }
 
   if (!options.deferRender) {
     state.lastGlobalDeals = computeGlobalDeals();
@@ -1064,6 +1073,43 @@ async function runSweep(monitorId, manual, options = {}) {
     render();
   }
   return true;
+}
+
+async function fetchPricedSweep(monitor) {
+  try {
+    const response = await fetch(SWEEP_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Flight-Tracker-Client": clientId,
+      },
+      body: JSON.stringify({ monitor }),
+    });
+    if (response.status === 429) {
+      const payload = await response.json().catch(() => ({}));
+      const error = new Error(payload.error || "Too many sweeps. Please wait a bit before running another search.");
+      error.isRateLimit = true;
+      throw error;
+    }
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  } catch (error) {
+    if (error.isRateLimit) throw error;
+    console.warn("Live fare sweep unavailable; falling back to client search links.", error);
+    return buildClientSweep(monitor);
+  }
+}
+
+function getClientId() {
+  try {
+    const existing = localStorage.getItem(CLIENT_ID_KEY);
+    if (existing) return existing;
+    const generated = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(CLIENT_ID_KEY, generated);
+    return generated;
+  } catch (_error) {
+    return "ephemeral-client";
+  }
 }
 
 function buildClientSweep(monitor) {
@@ -1078,15 +1124,15 @@ function buildClientSweep(monitor) {
   };
 }
 
-function sanitizeClientDeal(deal) {
+function normalizeDeal(deal) {
   return {
     ...deal,
-    price: null,
+    price: hasPrice(deal.price) ? Number(deal.price) : null,
     currency: deal.currency || "USD",
     airlineName: deal.airlineName || deal.airlineCode || "Check Google Flights for airline",
     sourceName: deal.sourceName || "Google Flights",
     sourceUrl: deal.sourceUrl || buildGoogleFlightsUrlFromDeal(deal),
-    provider: "client",
+    provider: deal.provider || "client",
   };
 }
 
@@ -1175,6 +1221,7 @@ function renderToolbarPriority(count) {
   const hasMonitors = count > 0;
   shareMonitorsButton.disabled = !hasMonitors;
   shareMonitorsButton.hidden = !hasMonitors;
+  lastSweepAt.hidden = !hasMonitors;
   runAllButton.classList.toggle("primary-button", hasMonitors);
   runAllButton.classList.toggle("ghost-button", !hasMonitors);
   runAllButton.disabled = !hasMonitors || sweepState.isSweeping;
@@ -1563,7 +1610,7 @@ function normalizeMonitor(monitor) {
   delete monitor.destination;
   monitor.history = [];
   if (!Array.isArray(monitor.topDeals)) monitor.topDeals = [];
-  monitor.topDeals = monitor.topDeals.map(sanitizeClientDeal);
+  monitor.topDeals = monitor.topDeals.map(normalizeDeal);
   monitor.configSignature = monitorConfigSignature(monitor);
   delete monitor.alertBelow;
   delete monitor.intervalMinutes;

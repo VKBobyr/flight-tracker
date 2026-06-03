@@ -20,7 +20,10 @@
         </div>
         <div class="topbar-actions">
           <button class="ghost-button toolbar-button" id="shareMonitorsButton" type="button" hidden>Share dashboard</button>
-          <button class="ghost-button toolbar-button" id="runAllButton" type="button" hidden>Run sweep</button>
+          <div class="sweep-action-group">
+            <button class="ghost-button toolbar-button" id="runAllButton" type="button" hidden>Run sweep</button>
+            <p class="panel-subtitle sweep-action-status" id="lastSweepAt">Not run yet</p>
+          </div>
         </div>
       </header>
 
@@ -42,9 +45,7 @@
         <section class="deals-panel" aria-labelledby="dealsTitle">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Latest sweep</p>
               <h2 id="dealsTitle">Searches to check</h2>
-              <p class="panel-subtitle" id="lastSweepAt">Not run yet</p>
             </div>
           </div>
           <div class="sweep-progress" id="sweepProgress" hidden>

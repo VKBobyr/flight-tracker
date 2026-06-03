@@ -2368,7 +2368,7 @@ function formatTripCount(count) {
 
 function formatTripLengthSummary(monitor) {
   const maxBound = TravelWindowLogic.maxTripLengthForRange(monitor.startFrom, monitor.startTo);
-  if (Number(monitor.tripMin) === 0 && Number(monitor.tripMax) === maxBound) return "any length";
+  if (Number(monitor.tripMin) === 0 && Number(monitor.tripMax) === maxBound) return "full trip window";
   if (Number(monitor.tripMin) === Number(monitor.tripMax)) return `${formatInteger(monitor.tripMin)} days`;
   return `${formatInteger(monitor.tripMin)}-${formatInteger(monitor.tripMax)} days`;
 }

@@ -909,6 +909,7 @@ async function saveMonitorFromForm(event) {
   resetMonitorForm();
   closeCreateMonitorOverlay();
   showToast(`Added ${formatPairCount(monitor.pairs.length)}.`);
+  await runSweepForMonitor(monitor.id);
 }
 
 function openCreateMonitorOverlay() {

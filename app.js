@@ -144,6 +144,7 @@ const sweepState = {
   isSweeping: false,
   total: 0,
   completed: 0,
+  activeMonitorId: null,
 };
 
 initializeDates();
@@ -1166,8 +1167,10 @@ async function runSweepForAll(manual) {
 
   const monitors = state.monitors.slice();
   startSweepProgress(monitors.length);
+  render();
   try {
     for (const monitor of monitors) {
+      setActiveSweepMonitor(monitor.id);
       updateSweepProgress(`Checking ${formatMonitorRoutes(normalizeMonitor(monitor))}`);
       await runSweep(monitor.id, manual, { deferRender: true });
       completeSweepProgressStep();
@@ -1180,6 +1183,7 @@ async function runSweepForAll(manual) {
     showToast("Fares ready.");
   } catch (error) {
     finishSweepProgress();
+    render();
     showToast(error.message || "Fare search failed.");
     throw error;
   }
@@ -1319,10 +1323,16 @@ function startSweepProgress(total) {
   sweepState.isSweeping = true;
   sweepState.total = total;
   sweepState.completed = 0;
+  sweepState.activeMonitorId = null;
   runAllButton.disabled = true;
   runAllButton.textContent = "Finding...";
   sweepProgress.hidden = false;
   updateSweepProgress("Preparing Google Flights searches");
+}
+
+function setActiveSweepMonitor(monitorId) {
+  sweepState.activeMonitorId = monitorId;
+  render();
 }
 
 function updateSweepProgress(message) {
@@ -1339,6 +1349,7 @@ function completeSweepProgressStep() {
 
 function finishSweepProgress() {
   sweepState.completed = sweepState.total;
+  sweepState.activeMonitorId = null;
   updateSweepProgress("Fares ready");
   sweepProgressBar.style.width = "100%";
   runAllButton.disabled = false;
@@ -1451,13 +1462,17 @@ function normalizedFareOptions(deal) {
   return options.map(normalizeRelatedDeal).filter((option) => option.origin || option.route);
 }
 
-function renderFareExplorer(monitor, deals) {
+function renderFareExplorer(monitor, deals, isLoading = false) {
   const groups = displayFareGroups(deals);
   const entries = fareEntriesFromGroups(groups);
   const explorer = document.createElement("div");
-  explorer.className = "fare-explorer";
+  explorer.className = `fare-explorer${isLoading ? " is-loading" : ""}`;
   if (!entries.length) {
-    explorer.innerHTML = `<p class="empty-state">Find fares to show smart Google Flights suggestions for this trip.</p>`;
+    if (isLoading) {
+      explorer.appendChild(renderFareLoadingTable());
+    } else {
+      explorer.innerHTML = `<p class="empty-state">Find fares to show smart Google Flights suggestions for this trip.</p>`;
+    }
     return explorer;
   }
 
@@ -1472,10 +1487,37 @@ function renderFareExplorer(monitor, deals) {
   if (!filteredEntries.length) {
     table.innerHTML = `<p class="empty-state">No fares match these filters.</p>`;
   } else {
-    table.appendChild(renderFareTable(monitor.id, sortedEntries, view));
+    table.appendChild(renderFareTable(monitor.id, sortedEntries, view, isLoading));
   }
   explorer.appendChild(table);
   return explorer;
+}
+
+function renderFareLoadingTable() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "fare-table-card fare-table-loading is-loading";
+  wrapper.setAttribute("aria-label", "Finding fares");
+  wrapper.innerHTML = `
+    <div class="fare-table-head">
+      <span>Trip</span>
+      <span>Start</span>
+      <span>End</span>
+      <span>Days</span>
+      <span>Airline</span>
+      <span>Stops</span>
+      <span>Price</span>
+      <span aria-hidden="true"></span>
+    </div>
+    <div class="fare-table-body">
+      ${Array.from({ length: 4 }, () => `
+        <div class="fare-skeleton-row" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+  return wrapper;
 }
 
 function getFareView(monitorId) {
@@ -1652,9 +1694,9 @@ function compareFareEntryTiebreakers(a, b, column) {
   return String(a.route || "").localeCompare(String(b.route || ""));
 }
 
-function renderFareTable(monitorId, entries, view) {
+function renderFareTable(monitorId, entries, view, isLoading = false) {
   const wrapper = document.createElement("div");
-  wrapper.className = "fare-table-card";
+  wrapper.className = `fare-table-card${isLoading ? " is-loading" : ""}`;
   const totalPages = Math.max(1, Math.ceil(entries.length / FARE_ROWS_PER_PAGE));
   view.page = Math.min(Math.max(1, Math.trunc(Number(view.page) || 1)), totalPages);
   const startIndex = (view.page - 1) * FARE_ROWS_PER_PAGE;
@@ -1928,7 +1970,8 @@ function renderMonitors() {
   getPrioritizedMonitors().forEach((monitor) => {
     normalizeMonitor(monitor);
     const card = document.createElement("article");
-    card.className = "monitor-card";
+    const isFindingFares = sweepState.isSweeping && sweepState.activeMonitorId === monitor.id;
+    card.className = `monitor-card${isFindingFares ? " is-finding-fares" : ""}`;
     const travelWindowCount = countTravelWindows(monitor);
     card.innerHTML = `
       <header>
@@ -1955,15 +1998,15 @@ function renderMonitors() {
           <div class="results-title">
             <h4>Top results</h4>
           </div>
-          ${monitor.topDeals.length ? "" : "<span>No fares yet</span>"}
+          ${isFindingFares ? "<span>Finding fares</span>" : (monitor.topDeals.length ? "" : "<span>No fares yet</span>")}
         </div>
         <div class="deals-list"></div>
       </section>
     `;
 
     const dealsList = card.querySelector(".deals-list");
-    if (monitor.topDeals.length) {
-      dealsList.appendChild(renderFareExplorer(monitor, monitor.topDeals));
+    if (monitor.topDeals.length || isFindingFares) {
+      dealsList.appendChild(renderFareExplorer(monitor, monitor.topDeals, isFindingFares));
     } else {
       dealsList.innerHTML = `<p class="empty-state">Find fares to show smart Google Flights suggestions for this trip.</p>`;
     }

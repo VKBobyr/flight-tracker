@@ -1012,6 +1012,7 @@ button:disabled {
 }
 
 .fare-table-card {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   border: 1px solid rgba(10, 132, 255, 0.18);
@@ -1020,8 +1021,40 @@ button:disabled {
   box-shadow: 0 8px 20px rgba(23, 61, 112, 0.07), var(--hairline);
 }
 
+.fare-table-card.is-loading {
+  border-color: rgba(10, 132, 255, 0.26);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(236, 247, 255, 0.58)),
+    rgba(255, 255, 255, 0.56);
+}
+
+.fare-table-card.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.34) 42%, rgba(255, 255, 255, 0.72) 50%, rgba(255, 255, 255, 0.34) 58%, transparent 100%);
+  opacity: 0.46;
+  transform: translateX(-120%);
+  animation: table-shimmer 1.85s ease-in-out infinite;
+}
+
+@keyframes table-shimmer {
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fare-table-card.is-loading::after {
+    animation: none;
+    transform: none;
+  }
+}
+
 .fare-table-head,
-.fare-table-row {
+.fare-table-row,
+.fare-skeleton-row {
   display: grid;
   grid-template-columns: minmax(84px, 1.08fr) minmax(64px, 0.72fr) minmax(64px, 0.72fr) minmax(56px, 0.58fr) minmax(104px, 1fr) minmax(66px, 0.62fr) minmax(70px, auto) 28px;
   gap: 10px;
@@ -1078,6 +1111,34 @@ button:disabled {
 .fare-table-row:focus-visible {
   background: rgba(10, 132, 255, 0.07);
   outline: none;
+}
+
+.fare-skeleton-row {
+  min-height: 43px;
+  padding: 10px 13px;
+  border-top: 1px solid rgba(90, 112, 126, 0.09);
+}
+
+.fare-skeleton-row span {
+  min-width: 0;
+  height: 11px;
+  border-radius: 999px;
+  background: rgba(92, 113, 141, 0.13);
+}
+
+.fare-skeleton-row span:nth-child(1),
+.fare-skeleton-row span:nth-child(5) {
+  width: 86%;
+}
+
+.fare-skeleton-row span:nth-child(7) {
+  justify-self: end;
+  width: 56px;
+}
+
+.fare-skeleton-row span:nth-child(8) {
+  justify-self: end;
+  width: 16px;
 }
 
 .fare-table-row strong {
@@ -1824,7 +1885,8 @@ button:disabled {
     display: none;
   }
 
-  .fare-table-row {
+  .fare-table-row,
+  .fare-skeleton-row {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px 10px;
     padding: 11px 12px;
@@ -1838,6 +1900,10 @@ button:disabled {
     white-space: normal;
   }
 
+  .fare-skeleton-row span {
+    height: 10px;
+  }
+
   .fare-table-row span:nth-of-type(1),
   .fare-table-row span:nth-of-type(2),
   .fare-table-row span:nth-of-type(3),
@@ -1845,9 +1911,32 @@ button:disabled {
     grid-column: 1 / 2;
   }
 
-  .fare-table-row span:nth-of-type(5) {
+  .fare-table-row span:nth-of-type(5),
+  .fare-skeleton-row span:nth-child(5) {
     grid-column: 1 / 2;
     white-space: nowrap;
+  }
+
+  .fare-skeleton-row span:nth-child(1),
+  .fare-skeleton-row span:nth-child(2),
+  .fare-skeleton-row span:nth-child(3),
+  .fare-skeleton-row span:nth-child(4),
+  .fare-skeleton-row span:nth-child(5),
+  .fare-skeleton-row span:nth-child(6) {
+    grid-column: 1 / 2;
+    justify-self: stretch;
+    width: auto;
+  }
+
+  .fare-skeleton-row span:nth-child(7) {
+    grid-column: 2 / 3;
+    grid-row: 1 / 2;
+  }
+
+  .fare-skeleton-row span:nth-child(8) {
+    grid-column: 2 / 3;
+    grid-row: 2 / 5;
+    align-self: end;
   }
 
   .fare-row-price {

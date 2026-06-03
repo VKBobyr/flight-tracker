@@ -11,7 +11,7 @@ An elegant fare dashboard with locally saved trips, shareable trip setup links, 
 - Flexible earliest start and latest end dates plus minimum and maximum trip length. Trip max can be lower than min; fare searches normalize the range when searching.
 - Maximum stops filtering, defaulting new trips to nonstop.
 - Manual fare searches across every saved trip.
-- Smart curated fare results per trip, including best overall, best value, cheapest per route, best trip length, and same-price alternatives.
+- Smart curated fare results per trip, grouped by the top four price levels with matching trip options inside each price group.
 - Static hosting falls back to direct Google Flights search links when live pricing is unavailable.
 - Trip setup is saved locally and can be shared through an explicit share link without bundling saved fare data.
 - Opening a share link lets you combine the shared trips with your local list or replace your local list.

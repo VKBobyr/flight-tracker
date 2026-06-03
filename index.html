@@ -14,7 +14,7 @@
     <meta name="twitter:title" content="Fareless">
     <meta name="twitter:description" content="Build flexible trips and find Google Flights fares across date windows.">
     <!-- default-link-preview-meta-end -->
-    <link rel="stylesheet" href="styles.css?v=2026-06-03-smart-fares">
+    <link rel="stylesheet" href="styles.css?v=2026-06-03-price-buckets-2">
   </head>
   <body>
     <div class="app-shell">
@@ -178,7 +178,7 @@
     </div>
 
     <template id="dealTemplate">
-      <a class="deal-row" target="_blank" rel="noopener noreferrer">
+      <article class="deal-row">
         <div class="deal-copy">
           <div class="deal-route-line">
             <span class="deal-reason"></span>
@@ -192,16 +192,16 @@
               <span class="deal-stops"></span>
             </span>
           </span>
-          <div class="same-price-list" hidden></div>
+          <div class="fare-option-list"></div>
         </div>
         <div class="deal-value">
-          <span class="deal-source"></span>
+          <a class="deal-source" target="_blank" rel="noopener noreferrer"></a>
           <div class="deal-price"></div>
         </div>
-      </a>
+      </article>
     </template>
 
     <script src="travel-windows.js?v=2026-06-02-window-tests-2"></script>
-    <script src="app.js?v=2026-06-03-smart-fares"></script>
+    <script src="app.js?v=2026-06-03-price-buckets-2"></script>
   </body>
 </html>

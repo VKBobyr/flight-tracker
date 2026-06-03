@@ -17,7 +17,7 @@ def deal(route, price, depart, length):
 
 
 class DealCurationTests(unittest.TestCase):
-  def test_curates_smart_categories_with_reason_labels(self):
+  def test_curates_top_price_buckets_with_trip_options(self):
     candidates = [
       deal("SFO-SEA", 100, "2026-07-10", 2),
       deal("SFO-TPA", 130, "2026-07-11", 10),
@@ -28,41 +28,31 @@ class DealCurationTests(unittest.TestCase):
       deal("SJC-LAS", 106, "2026-07-13", 3),
     ]
 
-    curated = server.curate_top_deals(candidates, 12)
+    curated = server.curate_top_deals(candidates, 4)
 
-    self.assertEqual(len(curated), 7)
+    self.assertEqual(len(curated), 4)
     self.assertEqual(
-      [entry["dealReason"] for entry in curated[:5]],
-      ["Best overall", "Best value", "Cheapest SJC → SEA", "Cheapest SJC → LAS", "Cheapest SFO → BOS"],
+      [entry["dealReason"] for entry in curated],
+      ["Lowest found", "Next lowest", "Third lowest", "Fourth lowest"],
     )
     self.assertEqual(curated[0]["dealHighlight"], "primary")
-    self.assertEqual(curated[1]["dealHighlight"], "primary")
-    self.assertIn("Best 1-day trip", [entry["dealReason"] for entry in curated])
+    self.assertEqual([entry["price"] for entry in curated], [100, 105, 106, 110])
+    self.assertEqual(curated[0]["fareOptionTotal"], 1)
+    self.assertEqual(curated[0]["fareOptions"][0]["route"], "SFO → SEA")
 
-  def test_skips_duplicate_category_winners_and_fills_with_next_cheapest(self):
-    candidates = [
-      deal("SFO-SEA", 100, "2026-07-01", 1),
-      deal("SJC-SEA", 102, "2026-07-02", 2),
-      deal("SFO-LAX", 103, "2026-07-03", 3),
-    ]
-
-    curated = server.curate_top_deals(candidates, 6)
-
-    self.assertEqual(len(curated), 3)
-    self.assertEqual(len({server.deal_identity(entry) for entry in curated}), 3)
-    self.assertEqual(curated[0]["dealReason"], "Best overall")
-
-  def test_groups_same_price_matches_under_lead_deal(self):
+  def test_groups_same_price_options_under_one_bucket(self):
     candidates = [
       deal("SFO-SEA", 100, "2026-07-01", 2),
       deal("SJC-SEA", 100, "2026-07-02", 3),
-      deal("SFO-LAX", 120, "2026-07-03", 4),
+      deal("SFO-LAX", 103, "2026-07-03", 3),
     ]
 
-    curated = server.curate_top_deals(candidates, 12)
+    curated = server.curate_top_deals(candidates, 4)
 
-    self.assertEqual(curated[0]["samePriceTotal"], 1)
-    self.assertEqual(curated[0]["samePriceMatches"][0]["route"], "SJC → SEA")
+    self.assertEqual(len(curated), 2)
+    self.assertEqual(curated[0]["price"], 100)
+    self.assertEqual(curated[0]["fareOptionTotal"], 2)
+    self.assertEqual([option["route"] for option in curated[0]["fareOptions"]], ["SFO → SEA", "SJC → SEA"])
 
   def test_unpriced_deals_become_direct_searches(self):
     candidates = [
@@ -70,7 +60,7 @@ class DealCurationTests(unittest.TestCase):
       {"route": "SJC → SEA", "origin": "SJC", "destination": "SEA", "depart": "2026-07-02", "returnDate": "2026-07-04", "length": 2},
     ]
 
-    curated = server.curate_top_deals(candidates, 6)
+    curated = server.curate_top_deals(candidates, 4)
 
     self.assertEqual([entry["dealReason"] for entry in curated], ["Direct search", "Direct search"])
 

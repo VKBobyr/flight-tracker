@@ -1046,43 +1046,48 @@ button:disabled {
   color: rgba(90, 112, 126, 0.58);
 }
 
-.same-price-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  margin-top: 9px;
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 760;
+.fare-option-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
 }
 
-.same-price-list[hidden] {
-  display: none;
-}
-
-.same-price-chip,
-.same-price-more {
+.fare-option-row {
   min-width: 0;
-  border: 1px solid rgba(10, 132, 255, 0.16);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.56);
-  padding: 4px 7px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  border-radius: calc(var(--radius) - 4px);
+  padding: 5px 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.fare-option-row:hover,
+.fare-option-row:focus-visible {
+  background: rgba(10, 132, 255, 0.08);
+  outline: none;
+}
+
+.fare-option-row strong {
   color: var(--accent-dark);
-  line-height: 1;
+  font-size: 0.77rem;
+  font-weight: 860;
+  white-space: nowrap;
 }
 
-.same-price-chip {
-  cursor: pointer;
-}
-
-.same-price-chip:hover,
-.same-price-chip:focus {
-  background: var(--accent-soft);
-}
-
-.same-price-more {
+.fare-option-row span,
+.fare-option-more {
+  min-width: 0;
   color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 720;
+  line-height: 1.2;
+}
+
+.fare-option-more {
+  padding: 2px 6px;
 }
 
 .deal-value {
@@ -1102,6 +1107,7 @@ button:disabled {
   font-size: 0.64rem;
   font-weight: 800;
   text-transform: uppercase;
+  text-decoration: none;
 }
 
 .deal-source::after {

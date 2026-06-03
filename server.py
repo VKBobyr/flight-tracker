@@ -41,7 +41,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent
 MAX_BODY_BYTES = 2 * 1024 * 1024
-TOP_DEAL_LIMIT = 12
+TOP_DEAL_LIMIT = 4
 MAX_FLI_QUERIES_PER_MONITOR = 80
 MAX_PAIRS_PER_MONITOR = 12
 MAX_EXCLUDED_AIRLINES = 24
@@ -532,42 +532,18 @@ def curate_top_deals(candidates: list[dict], limit: int = TOP_DEAL_LIMIT) -> lis
   if not priced:
     return [with_deal_reason(deal, "Direct search") for deal in candidates[:limit]]
 
-  cheapest_price = min(deal["price"] for deal in priced)
-  low_fare_ceiling = cheapest_price * 1.15
-  selected: list[dict] = []
-  selected_keys: set[tuple] = set()
-
-  def add(reason: str, deal: dict | None, *, highlight: str = "") -> None:
-    if not deal or len(selected) >= limit:
-      return
-    key = deal_identity(deal)
-    if key in selected_keys:
-      return
-    selected_keys.add(key)
-    selected.append(with_deal_reason(deal, reason, highlight=highlight))
-
-  low_fares = [deal for deal in priced if deal["price"] <= low_fare_ceiling]
-  add("Best overall", min(priced, key=deal_sort_key), highlight="primary")
-  add("Best value", min(priced, key=lambda deal: (price_per_day(deal), deal_sort_key(deal))), highlight="primary")
-
-  route_slots = max(2, min(4, limit // 3))
-  for route, route_deals in sorted(group_deals(priced, route_key).items(), key=lambda item: deal_sort_key(min(item[1], key=deal_sort_key)))[:route_slots]:
-    add(f"Cheapest {route}", min(route_deals, key=deal_sort_key))
-
-  length_slots = max(2, min(4, limit // 3))
-  for length, length_deals in sorted(group_deals(priced, length_key).items(), key=lambda item: (safe_length_value(item[0]), deal_sort_key(min(item[1], key=deal_sort_key))))[:length_slots]:
-    add(f"Best {length}-day trip", min(length_deals, key=deal_sort_key))
-
-  add("Longest low fare", max(low_fares, key=lambda deal: (int(deal.get("length") or 0), -float(deal.get("price") or 0), str(deal.get("depart") or ""))) if low_fares else None)
-  add("Shortest trip", min(priced, key=lambda deal: (int(deal.get("length") or 0), deal_sort_key(deal))))
-  add("Earliest good fare", min(low_fares, key=lambda deal: (str(deal.get("depart") or ""), deal_sort_key(deal))) if low_fares else None)
-
-  for deal in sorted(priced, key=deal_sort_key):
-    add("Also good", deal)
-    if len(selected) >= limit:
-      break
-
-  return [with_same_price_matches(deal, priced) for deal in selected]
+  buckets = sorted(group_deals(priced, price_key).items(), key=lambda item: float(item[0]))
+  labels = ["Lowest found", "Next lowest", "Third lowest", "Fourth lowest"]
+  selected = []
+  for index, (_price, deals) in enumerate(buckets[:limit]):
+    lead = min(deals, key=deal_sort_key)
+    selected.append(with_fare_options(
+      lead,
+      sorted(deals, key=deal_sort_key),
+      labels[index] if index < len(labels) else "Also available",
+      highlight="primary" if index == 0 else "",
+    ))
+  return selected
 
 
 def group_deals(deals: list[dict], key_fn) -> dict[str, list[dict]]:
@@ -579,19 +555,8 @@ def group_deals(deals: list[dict], key_fn) -> dict[str, list[dict]]:
   return groups
 
 
-def route_key(deal: dict) -> str:
-  return str(deal.get("route") or "").strip()
-
-
-def length_key(deal: dict) -> str:
-  return str(int(deal.get("length") or 0))
-
-
-def safe_length_value(value: str) -> int:
-  try:
-    return int(value)
-  except Exception:
-    return 0
+def price_key(deal: dict) -> str:
+  return str(float(deal.get("price") or 0))
 
 
 def with_deal_reason(deal: dict, reason: str, *, highlight: str = "") -> dict:
@@ -602,21 +567,10 @@ def with_deal_reason(deal: dict, reason: str, *, highlight: str = "") -> dict:
   return next_deal
 
 
-def with_same_price_matches(deal: dict, priced: list[dict]) -> dict:
-  price = deal.get("price")
-  if not isinstance(price, (int, float)):
-    return deal
-  key = deal_identity(deal)
-  matches = [
-    match
-    for match in sorted(priced, key=deal_sort_key)
-    if match.get("price") == price and deal_identity(match) != key
-  ]
-  if not matches:
-    return deal
-  next_deal = dict(deal)
-  next_deal["samePriceMatches"] = [compact_related_deal(match) for match in matches[:4]]
-  next_deal["samePriceTotal"] = len(matches)
+def with_fare_options(deal: dict, options: list[dict], reason: str, *, highlight: str = "") -> dict:
+  next_deal = with_deal_reason(deal, reason, highlight=highlight)
+  next_deal["fareOptions"] = [compact_related_deal(option) for option in options]
+  next_deal["fareOptionTotal"] = len(options)
   return next_deal
 
 

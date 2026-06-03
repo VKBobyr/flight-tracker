@@ -82,7 +82,7 @@ const CLIENT_DB_KEY = "default";
 const CLIENT_ID_KEY = "flight-tracker-client-id-v1";
 const MONITOR_URL_PARAM = "m";
 const SWEEP_API_URL = "/api/sweep";
-const TOP_DEAL_LIMIT = 12;
+const TOP_DEAL_LIMIT = 4;
 const AIRLINE_FALLBACK = "Airline unavailable";
 const TravelWindowLogic = window.TravelWindows;
 
@@ -1277,9 +1277,15 @@ function normalizeDeal(deal) {
     provider: deal.provider || "client",
     dealReason: String(deal.dealReason || "").trim(),
     dealHighlight: String(deal.dealHighlight || "").trim(),
-    samePriceMatches: Array.isArray(deal.samePriceMatches) ? deal.samePriceMatches.map(normalizeRelatedDeal) : [],
-    samePriceTotal: Math.max(0, Math.trunc(Number(deal.samePriceTotal) || 0)),
+    fareOptions: Array.isArray(deal.fareOptions) ? deal.fareOptions.map(normalizeRelatedDeal) : fareOptionsFromLegacyDeal(deal),
+    fareOptionTotal: Math.max(0, Math.trunc(Number(deal.fareOptionTotal) || 0)),
   };
+}
+
+function fareOptionsFromLegacyDeal(deal) {
+  const lead = normalizeRelatedDeal(deal);
+  const legacyMatches = Array.isArray(deal.samePriceMatches) ? deal.samePriceMatches.map(normalizeRelatedDeal) : [];
+  return [lead, ...legacyMatches].filter((option) => option.origin || option.route);
 }
 
 function normalizeRelatedDeal(deal) {
@@ -1360,44 +1366,20 @@ function curateClientDeals(candidates, limit = TOP_DEAL_LIMIT) {
     return candidates.slice(0, limit).map((deal) => ({ ...deal, dealReason: "Direct search" }));
   }
 
-  const cheapestPrice = Math.min(...priced.map((deal) => Number(deal.price)));
-  const lowFareCeiling = cheapestPrice * 1.15;
-  const lowFares = priced.filter((deal) => Number(deal.price) <= lowFareCeiling);
-  const selected = [];
-  const selectedKeys = new Set();
-  const addDeal = (reason, deal, options = {}) => {
-    if (!deal || selected.length >= limit) return;
-    const key = dealIdentity(deal);
-    if (selectedKeys.has(key)) return;
-    selectedKeys.add(key);
-    selected.push({ ...deal, dealReason: reason, dealHighlight: options.highlight || "" });
-  };
-
-  addDeal("Best overall", priced.slice().sort(compareDeals)[0], { highlight: "primary" });
-  addDeal("Best value", priced.slice().sort((a, b) => pricePerDay(a) - pricePerDay(b) || compareDeals(a, b))[0], { highlight: "primary" });
-
-  const routeSlots = Math.max(2, Math.min(4, Math.floor(limit / 3)));
-  groupDeals(priced, (deal) => deal.route)
-    .sort((a, b) => compareDeals(a.best, b.best))
-    .slice(0, routeSlots)
-    .forEach((group) => addDeal(`Cheapest ${group.key}`, group.best));
-
-  const lengthSlots = Math.max(2, Math.min(4, Math.floor(limit / 3)));
-  groupDeals(priced, (deal) => String(Number(deal.length || 0)))
-    .sort((a, b) => Number(a.key) - Number(b.key) || compareDeals(a.best, b.best))
-    .slice(0, lengthSlots)
-    .forEach((group) => addDeal(`Best ${group.key}-day trip`, group.best));
-
-  addDeal("Longest low fare", lowFares.slice().sort((a, b) => (
-    Number(b.length || 0) - Number(a.length || 0)
-    || Number(a.price || 0) - Number(b.price || 0)
-    || String(a.depart || "").localeCompare(String(b.depart || ""))
-  ))[0]);
-  addDeal("Shortest trip", priced.slice().sort((a, b) => Number(a.length || 0) - Number(b.length || 0) || compareDeals(a, b))[0]);
-  addDeal("Earliest good fare", lowFares.slice().sort((a, b) => String(a.depart || "").localeCompare(String(b.depart || "")) || compareDeals(a, b))[0]);
-
-  priced.slice().sort(compareDeals).forEach((deal) => addDeal("Also good", deal));
-  return selected.slice(0, limit).map((deal) => withSamePriceMatches(deal, priced));
+  const labels = ["Lowest found", "Next lowest", "Third lowest", "Fourth lowest"];
+  return groupDeals(priced, (deal) => String(Number(deal.price)))
+    .sort((a, b) => Number(a.key) - Number(b.key))
+    .slice(0, limit)
+    .map((group, index) => {
+      const options = group.deals.slice().sort(compareDeals);
+      return {
+        ...options[0],
+        dealReason: labels[index] || "Also available",
+        dealHighlight: index === 0 ? "primary" : "",
+        fareOptions: options.map(compactFareOption),
+        fareOptionTotal: options.length,
+      };
+    });
 }
 
 function groupDeals(deals, keyFn) {
@@ -1415,45 +1397,20 @@ function groupDeals(deals, keyFn) {
   }));
 }
 
-function withSamePriceMatches(deal, priced) {
-  if (!hasPrice(deal.price)) return deal;
-  const key = dealIdentity(deal);
-  const matches = priced
-    .slice()
-    .sort(compareDeals)
-    .filter((match) => Number(match.price) === Number(deal.price) && dealIdentity(match) !== key);
-  if (!matches.length) return deal;
+function compactFareOption(deal) {
   return {
-    ...deal,
-    samePriceMatches: matches.slice(0, 4).map((match) => ({
-      route: match.route,
-      origin: match.origin,
-      destination: match.destination,
-      depart: match.depart,
-      returnDate: match.returnDate,
-      length: match.length,
-      stopCount: match.stopCount,
-      maxStops: match.maxStops,
-      airlineName: match.airlineName,
-      airlineCode: match.airlineCode,
-      sourceUrl: match.sourceUrl,
-    })),
-    samePriceTotal: matches.length,
+    route: deal.route,
+    origin: deal.origin,
+    destination: deal.destination,
+    depart: deal.depart,
+    returnDate: deal.returnDate,
+    length: deal.length,
+    stopCount: deal.stopCount,
+    maxStops: deal.maxStops,
+    airlineName: deal.airlineName,
+    airlineCode: deal.airlineCode,
+    sourceUrl: deal.sourceUrl,
   };
-}
-
-function dealIdentity(deal) {
-  return [
-    deal.origin || "",
-    deal.destination || "",
-    deal.depart || "",
-    deal.returnDate || "",
-    deal.length || 0,
-  ].join("|");
-}
-
-function pricePerDay(deal) {
-  return Number(deal.price || 0) / Math.max(1, Number(deal.length || 0));
 }
 
 function hasPrice(value) {
@@ -1484,22 +1441,27 @@ function renderLastSweepAt() {
   lastSweepAt.textContent = state.lastSweepAt ? `Last found ${formatDateTime(state.lastSweepAt)}` : "No fares yet";
 }
 
-function renderDeal(deal) {
+function renderDeal(deal, index = 0) {
   const template = document.querySelector("#dealTemplate");
   const node = template.content.firstElementChild.cloneNode(true);
-  node.classList.toggle("is-highlighted", deal.dealHighlight === "primary");
+  node.classList.toggle("is-highlighted", index === 0 || deal.dealHighlight === "primary");
+  const options = normalizedFareOptions(deal);
   const reason = node.querySelector(".deal-reason");
-  if (deal.dealReason) {
-    reason.textContent = deal.dealReason;
+  const label = hasPrice(deal.price) ? fareBucketLabel(index) : deal.dealReason;
+  if (label) {
+    reason.textContent = label;
   } else {
     reason.remove();
   }
-  node.querySelector(".deal-route").textContent = deal.route;
-  node.querySelector(".deal-airline").textContent = normalizeAirlineName(deal.airlineName, deal.airlineCode);
-  node.querySelector(".deal-dates").textContent = `${formatDate(deal.depart)} to ${formatDate(deal.returnDate)}`;
-  node.querySelector(".deal-duration").textContent = formatDayCount(deal.length);
-  node.querySelector(".deal-stops").textContent = formatDealStops(deal);
-  node.querySelector(".deal-source").textContent = formatDealSourceName(deal);
+  node.querySelector(".deal-route").textContent = formatFareGroupRoute(options, deal);
+  node.querySelector(".deal-airline").textContent = formatFareGroupAirline(options, deal);
+  node.querySelector(".deal-dates").textContent = formatFareGroupDepartures(options, deal);
+  node.querySelector(".deal-duration").textContent = formatFareGroupDurations(options, deal);
+  node.querySelector(".deal-stops").textContent = formatFareGroupStops(options, deal);
+  const source = node.querySelector(".deal-source");
+  source.textContent = formatDealSourceName(deal);
+  source.href = buildGoogleFlightsUrlFromDeal(options[0] || deal) || deal.sourceUrl || "https://www.google.com/travel/flights";
+  source.title = "Open this fare on Google Flights";
   const price = node.querySelector(".deal-price");
   if (hasPrice(deal.price)) {
     price.textContent = formatMoney(deal.price);
@@ -1508,43 +1470,92 @@ function renderDeal(deal) {
     price.textContent = "Check price";
     price.classList.add("is-unpriced");
   }
-  node.href = buildGoogleFlightsUrlFromDeal(deal) || deal.sourceUrl || "https://www.google.com/travel/flights";
-  node.title = "Open this search on Google Flights";
-  renderSamePriceMatches(node, deal);
+  renderFareOptions(node, options, deal);
   return node;
 }
 
-function renderSamePriceMatches(node, deal) {
-  const list = node.querySelector(".same-price-list");
-  const matches = Array.isArray(deal.samePriceMatches) ? deal.samePriceMatches : [];
-  if (!list || !matches.length || !hasPrice(deal.price)) return;
-  list.hidden = false;
-  list.appendChild(document.createTextNode(`Same ${formatMoney(deal.price)} fare:`));
-  matches.slice(0, 4).forEach((match) => {
-    const link = document.createElement("span");
-    link.className = "same-price-chip";
-    link.setAttribute("role", "link");
-    link.tabIndex = 0;
-    link.textContent = `${match.route || `${match.origin} → ${match.destination}`} · ${formatDate(match.depart)} · ${formatDayCount(match.length)}`;
-    link.title = "Open this matching fare on Google Flights";
-    const openMatch = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const url = buildGoogleFlightsUrlFromDeal(match) || match.sourceUrl;
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-    };
-    link.addEventListener("click", openMatch);
-    link.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") openMatch(event);
-    });
-    list.appendChild(link);
+function fareBucketLabel(index) {
+  return ["Lowest found", "Next lowest", "Third lowest", "Fourth lowest"][index] || "Also available";
+}
+
+function normalizedFareOptions(deal) {
+  const options = Array.isArray(deal.fareOptions) && deal.fareOptions.length
+    ? deal.fareOptions
+    : fareOptionsFromLegacyDeal(deal);
+  return options.map(normalizeRelatedDeal).filter((option) => option.origin || option.route);
+}
+
+function renderFareOptions(node, options, deal) {
+  const list = node.querySelector(".fare-option-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (hasPrice(deal.price) && options.length <= 1) return;
+  options.slice(0, 5).forEach((option) => {
+    const row = document.createElement("a");
+    row.className = "fare-option-row";
+    row.href = buildGoogleFlightsUrlFromDeal(option) || option.sourceUrl || "https://www.google.com/travel/flights";
+    row.target = "_blank";
+    row.rel = "noopener noreferrer";
+    row.title = "Open this trip on Google Flights";
+    row.innerHTML = `
+      <strong>${option.route || `${option.origin} → ${option.destination}`}</strong>
+      <span>${formatDate(option.depart)}-${formatDate(option.returnDate)} · ${formatDayCount(option.length)} · ${normalizeAirlineName(option.airlineName, option.airlineCode)} · ${formatDealStops(option)}</span>
+    `;
+    list.appendChild(row);
   });
-  if (Number(deal.samePriceTotal || 0) > matches.length) {
-    const more = document.createElement("span");
-    more.className = "same-price-more";
-    more.textContent = `+${formatInteger(Number(deal.samePriceTotal) - matches.length)} more`;
+  if (options.length > 5) {
+    const more = document.createElement("div");
+    more.className = "fare-option-more";
+    more.textContent = `${formatInteger(options.length - 5)} more at this price`;
     list.appendChild(more);
   }
+}
+
+function formatFareGroupRoute(options, deal) {
+  const destinations = uniqueValues(options.map((option) => option.destination || destinationFromRoute(option.route)).filter(Boolean));
+  const origins = uniqueValues(options.map((option) => option.origin || originFromRoute(option.route)).filter(Boolean));
+  if (origins.length && destinations.length === 1) {
+    return `${origins.join(" / ")} → ${destinations[0]}`;
+  }
+  if (origins.length === 1 && destinations.length) {
+    return `${origins[0]} → ${destinations.join(" / ")}`;
+  }
+  return deal.route || "Flexible routes";
+}
+
+function formatFareGroupAirline(options, deal) {
+  const airlines = uniqueValues(options.map((option) => normalizeAirlineName(option.airlineName, option.airlineCode)).filter(Boolean));
+  if (airlines.length === 1) return airlines[0];
+  if (airlines.length > 1) return `${formatInteger(airlines.length)} airlines`;
+  return normalizeAirlineName(deal.airlineName, deal.airlineCode);
+}
+
+function formatFareGroupDepartures(options, deal) {
+  const departs = uniqueValues(options.map((option) => option.depart).filter(Boolean)).sort();
+  if (!departs.length) return formatDate(deal.depart);
+  if (departs.length === 1) return `${formatDate(departs[0])} departure`;
+  return `${formatDate(departs[0])}-${formatDate(departs[departs.length - 1])} departures`;
+}
+
+function formatFareGroupDurations(options, deal) {
+  const lengths = uniqueValues(options.map((option) => Number(option.length)).filter((length) => Number.isFinite(length))).sort((a, b) => a - b);
+  if (!lengths.length) return formatDayCount(deal.length);
+  if (lengths.length === 1) return formatDayCount(lengths[0]);
+  return `${formatInteger(lengths[0])}-${formatInteger(lengths[lengths.length - 1])} days`;
+}
+
+function formatFareGroupStops(options, deal) {
+  const labels = uniqueValues(options.map(formatDealStops).filter(Boolean));
+  if (labels.length === 1) return labels[0];
+  return "Mixed stops";
+}
+
+function originFromRoute(route) {
+  return String(route || "").split(" → ")[0] || "";
+}
+
+function destinationFromRoute(route) {
+  return String(route || "").split(" → ")[1] || "";
 }
 
 function formatDealSourceName(deal) {
@@ -1732,7 +1743,7 @@ function renderMonitors() {
 
     const dealsList = card.querySelector(".deals-list");
     if (monitor.topDeals.length) {
-      monitor.topDeals.slice(0, TOP_DEAL_LIMIT).forEach((deal) => dealsList.appendChild(renderDeal(deal)));
+      displayFareGroups(monitor.topDeals).forEach((deal, index) => dealsList.appendChild(renderDeal(deal, index)));
     } else {
       dealsList.innerHTML = `<p class="empty-state">Find fares to show smart Google Flights suggestions for this trip.</p>`;
     }
@@ -1744,6 +1755,13 @@ function renderMonitors() {
     card.querySelector('[data-action="remove"]').addEventListener("click", () => removeMonitor(monitor.id));
     monitorGrid.appendChild(card);
   });
+}
+
+function displayFareGroups(deals) {
+  return deals
+    .slice()
+    .sort(compareDeals)
+    .slice(0, TOP_DEAL_LIMIT);
 }
 
 function renderShareImportOverlay() {

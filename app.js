@@ -1744,7 +1744,7 @@ function renderFareTableRow(entry) {
 function normalizeAirlineName(name, code) {
   const cleanName = String(name || "").trim();
   const cleanCode = String(code || "").trim();
-  if (cleanName && cleanName !== "Check Google Flights for airline") return cleanName;
+  if (cleanName && cleanName !== "Check Google Flights for airline") return formatAirlineNames(cleanName.split(","));
   if (cleanCode) return cleanCode;
   return AIRLINE_FALLBACK;
 }
@@ -1753,6 +1753,39 @@ function knownAirlineName(name, code) {
   const label = normalizeAirlineName(name, code);
   if (label === AIRLINE_FALLBACK || label === "Check Google Flights for airline") return "";
   return label;
+}
+
+function formatAirlineNames(names) {
+  const compacted = [];
+  names.map((name) => String(name || "").trim()).filter(Boolean).forEach((name) => {
+    const matchIndex = compacted.findIndex((existing) => airlineNamesMatch(existing, name));
+    if (matchIndex >= 0) {
+      compacted[matchIndex] = preferredAirlineName(compacted[matchIndex], name);
+    } else {
+      compacted.push(name);
+    }
+  });
+  return compacted.join(", ");
+}
+
+function airlineNamesMatch(first, second) {
+  const firstKey = airlineNameKey(first);
+  const secondKey = airlineNameKey(second);
+  return Boolean(firstKey && firstKey === secondKey);
+}
+
+function airlineNameKey(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((word) => !["air", "airline", "airlines", "airways", "lines"].includes(word))
+    .join(" ");
+}
+
+function preferredAirlineName(first, second) {
+  return first.length <= second.length ? first : second;
 }
 
 function buildGoogleFlightsUrlFromDeal(deal) {

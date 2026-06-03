@@ -45,6 +45,16 @@ class AirlineExtractionTests(unittest.TestCase):
       "American Airlines",
     )
 
+  def test_airline_name_variants_are_compacted(self):
+    self.assertEqual(server.format_airline_names(["United", "United Airlines"]), "United")
+    self.assertEqual(server.format_airline_names(["Delta", "Delta Air Lines"]), "Delta")
+
+  def test_best_available_airline_label_compacts_joined_names(self):
+    self.assertEqual(
+      server.best_available_airline_label({"airlineName": "United, United Airlines", "airlineCode": "UA"}),
+      "United",
+    )
+
   def test_stop_count_prefers_fli_stops_field(self):
     flights = (
       SimpleNamespace(stops=0, legs=[object(), object(), object()]),

@@ -10,6 +10,7 @@ import io
 import json
 import os
 import posixpath
+import re
 import time
 from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
@@ -306,7 +307,7 @@ def flight_result_to_deal(pair: dict, result: object, depart: str, return_date: 
     "price": round_price(min(prices)),
     "currency": "USD",
     "airlineCode": ", ".join(unique_values(airline_codes)),
-    "airlineName": ", ".join(unique_values(airline_names)) or AIRLINE_PLACEHOLDER,
+    "airlineName": format_airline_names(airline_names),
     "stopCount": stop_count_from_flights(flights),
     "sourceName": "Google Flights",
     "sourceUrl": google_flights_url(pair["origin"], pair["destination"], depart, return_date),
@@ -512,11 +513,44 @@ def has_real_airline(deal: dict) -> bool:
 def best_available_airline_label(deal: dict) -> str:
   name = str(deal.get("airlineName") or "").strip()
   if name and name != AIRLINE_PLACEHOLDER:
-    return name
+    return format_airline_names(name.split(","))
   code = str(deal.get("airlineCode") or "").strip()
   if code:
-    return ", ".join(AIRLINE_NAMES.get(part.strip(), part.strip()) for part in code.split(",") if part.strip()) or code
+    return format_airline_names([AIRLINE_NAMES.get(part.strip(), part.strip()) for part in code.split(",") if part.strip()]) or code
   return AIRLINE_PLACEHOLDER
+
+
+def format_airline_names(names: list[str]) -> str:
+  compacted = compact_airline_names(unique_values([str(name or "").strip() for name in names]))
+  return ", ".join(compacted) or AIRLINE_PLACEHOLDER
+
+
+def compact_airline_names(names: list[str]) -> list[str]:
+  output = []
+  for name in names:
+    if not name:
+      continue
+    if any(airline_names_match(name, existing) for existing in output):
+      output = [preferred_airline_name(existing, name) if airline_names_match(name, existing) else existing for existing in output]
+      continue
+    output.append(name)
+  return output
+
+
+def airline_names_match(first: str, second: str) -> bool:
+  first_key = airline_name_key(first)
+  second_key = airline_name_key(second)
+  return bool(first_key and first_key == second_key)
+
+
+def airline_name_key(name: str) -> str:
+  key = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+  words = [word for word in key.split() if word not in {"air", "airline", "airlines", "airways", "lines"}]
+  return " ".join(words)
+
+
+def preferred_airline_name(first: str, second: str) -> str:
+  return first if len(first) <= len(second) else second
 
 
 def date_price_matches(result: object, monitor: dict, duration: int) -> bool:

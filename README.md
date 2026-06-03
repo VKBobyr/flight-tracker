@@ -66,6 +66,18 @@ gcloud run services update flight-tracker \
   --set-env-vars SWEEP_CACHE_TTL_SECONDS=21600,MAX_SWEEPS_PER_CLIENT_WINDOW=12,MAX_SWEEPS_PER_IP_WINDOW=30,RATE_WINDOW_SECONDS=3600
 ```
 
+## Security posture
+
+The deployed Cloud Run service is public so shared dashboards and live sweeps can work without user accounts. The runtime service account should not have project-level IAM roles, and Cloud Run should stay constrained with `--max-instances 1` and `--concurrency 1` unless you add stronger abuse controls.
+
+The app does not ship API keys to the browser. Sweep requests go through `/api/sweep`, which validates JSON content type, limits request size, caps monitor breadth, caches repeat searches, and applies in-process client/IP rate limits. Those limits reduce casual abuse but are not a hard billing cap: they reset on container restart and are not durable across multiple instances. For a public launch, put Cloud Armor or Firebase/App Check-style protection in front of the service, or require lightweight Google sign-in.
+
+Local data files are intentionally excluded from git and Docker build contexts:
+
+- `flight_tracker.sqlite`
+- `flight_tracker.sqlite-*`
+- `.env` / `.env.*`
+
 ## Data source
 
 Local sweeps call the `flights` Python package, whose importable module is `fli`, from `server.py`. Fli queries Google Flights server-side and the app stores the returned fare prices and available carrier details in browser storage.

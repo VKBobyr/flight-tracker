@@ -9,6 +9,7 @@ import html
 import io
 import json
 import os
+import posixpath
 import time
 from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
@@ -42,6 +43,9 @@ ROOT = Path(__file__).resolve().parent
 MAX_BODY_BYTES = 2 * 1024 * 1024
 TOP_DEAL_LIMIT = 6
 MAX_FLI_QUERIES_PER_MONITOR = 80
+MAX_PAIRS_PER_MONITOR = 12
+MAX_EXCLUDED_AIRLINES = 24
+MAX_SHARE_PARAM_CHARS = 12000
 AIRLINE_PLACEHOLDER = "Check Google Flights for airline"
 SWEEP_CACHE_TTL_SECONDS = int(os.environ.get("SWEEP_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
 RATE_WINDOW_SECONDS = int(os.environ.get("RATE_WINDOW_SECONDS", "3600"))
@@ -59,6 +63,7 @@ PUBLIC_STATIC_PATHS = {
   "/travel-windows.js",
 }
 PUBLIC_STATIC_PREFIXES = ("/assets/",)
+PUBLIC_ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".svg"}
 
 
 def fli_available() -> bool:
@@ -139,6 +144,8 @@ def normalize_monitor(monitor: dict) -> dict:
   pairs = []
   seen_pairs = set()
   for pair in monitor.get("pairs") or []:
+    if len(pairs) >= MAX_PAIRS_PER_MONITOR:
+      break
     origin = clean_iata(pair.get("origin"))
     destination = clean_iata(pair.get("destination"))
     key = (origin, destination)
@@ -162,7 +169,7 @@ def normalize_monitor(monitor: dict) -> dict:
     clean_airline_code(code)
     for code in (monitor.get("excludedAirlines") or [])
     if clean_airline_code(code)
-  })
+  })[:MAX_EXCLUDED_AIRLINES]
   max_stops = normalize_max_stops(monitor.get("maxStops", 0))
 
   return {
@@ -663,9 +670,11 @@ def write_cache(cache: dict[str, dict], key: str, value: dict, ttl_seconds: int)
 
 
 def check_rate_limit(client_id: str, ip_address: str) -> tuple[bool, int]:
-  client_ok, client_retry = consume_rate_limit(f"client:{client_id}", MAX_SWEEPS_PER_CLIENT_WINDOW)
   ip_ok, ip_retry = consume_rate_limit(f"ip:{ip_address}", MAX_SWEEPS_PER_IP_WINDOW)
-  return client_ok and ip_ok, max(client_retry, ip_retry)
+  if not ip_ok:
+    return False, ip_retry
+  client_ok, client_retry = consume_rate_limit(f"client:{client_id}", MAX_SWEEPS_PER_CLIENT_WINDOW)
+  return client_ok, client_retry
 
 
 def consume_rate_limit(key: str, limit: int) -> tuple[bool, int]:
@@ -696,8 +705,20 @@ def prune_rate_limit_hits(cutoff: float) -> None:
 
 def request_origin(headers) -> str:
   protocol = headers.get("X-Forwarded-Proto") or "http"
-  host = headers.get("Host") or "127.0.0.1:8001"
+  if protocol not in ("http", "https"):
+    protocol = "http"
+  host = safe_host(headers.get("Host") or "127.0.0.1:8001")
   return f"{protocol}://{host}"
+
+
+def safe_host(value: str) -> str:
+  host = str(value).strip().split(",", 1)[0]
+  if not host or len(host) > 255:
+    return "127.0.0.1:8001"
+  allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:[]")
+  if any(character not in allowed for character in host):
+    return "127.0.0.1:8001"
+  return host
 
 
 def shared_preview_context(encoded: str | None) -> dict:
@@ -743,6 +764,8 @@ def shared_preview_context(encoded: str | None) -> dict:
 
 def decode_shared_monitors(encoded: str | None) -> list[dict]:
   if not encoded:
+    return []
+  if len(str(encoded)) > MAX_SHARE_PARAM_CHARS:
     return []
   try:
     payload = json.loads(base64.urlsafe_b64decode(pad_base64(encoded)).decode("utf-8"))
@@ -933,6 +956,10 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
       self.send_error(HTTPStatus.NOT_FOUND)
       return
     try:
+      content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+      if content_type != "application/json":
+        self.send_error(HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+        return
       content_length = int(self.headers.get("Content-Length", "0"))
       if content_length > MAX_BODY_BYTES:
         self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
@@ -943,7 +970,7 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
       if cached:
         self.send_json(cached)
         return
-      allowed, retry_after = check_rate_limit(self.client_id(), self.client_address[0])
+      allowed, retry_after = check_rate_limit(self.client_id(), self.client_ip())
       if not allowed:
         self.send_json(
           {"error": "Too many sweeps. Please wait a bit before running another search."},
@@ -961,9 +988,43 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
     clean_client = "".join(char for char in raw_client if char.isalnum() or char in "-_")[:80]
     return clean_client or "anonymous"
 
+  def client_ip(self) -> str:
+    forwarded_for = self.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+      candidate = forwarded_for.split(",", 1)[0].strip()
+      if candidate and len(candidate) <= 64:
+        return candidate
+    return self.client_address[0]
+
   def is_public_static_path(self) -> bool:
     path = unquote(urlparse(self.path).path)
-    return path in PUBLIC_STATIC_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_STATIC_PREFIXES)
+    if "\x00" in path or "\\" in path:
+      return False
+    if posixpath.normpath(path) != path:
+      return False
+    if path in PUBLIC_STATIC_PATHS:
+      return True
+    if path.startswith(PUBLIC_STATIC_PREFIXES) and not path.endswith("/"):
+      return Path(path).suffix.lower() in PUBLIC_ASSET_EXTENSIONS
+    return False
+
+  def end_headers(self) -> None:
+    self.send_security_headers()
+    super().end_headers()
+
+  def send_security_headers(self) -> None:
+    self.send_header("X-Content-Type-Options", "nosniff")
+    self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+    self.send_header("X-Frame-Options", "DENY")
+    self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+    self.send_header("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()")
+    self.send_header(
+      "Content-Security-Policy",
+      "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; "
+      "script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'none'",
+    )
+    if self.headers.get("X-Forwarded-Proto") == "https":
+      self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 
   def dynamic_bytes(self, body: bytes, content_type: str):
     self.send_response(HTTPStatus.OK)

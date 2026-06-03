@@ -1,7 +1,12 @@
 .git
+.env
+.env.*
 .venv
 __pycache__
 *.pyc
 .DS_Store
 node_modules
 coverage
+flight_tracker.sqlite
+flight_tracker.sqlite-*
+*.log

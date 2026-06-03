@@ -83,6 +83,7 @@ const CLIENT_ID_KEY = "flight-tracker-client-id-v1";
 const MONITOR_URL_PARAM = "m";
 const SWEEP_API_URL = "/api/sweep";
 const TOP_DEAL_LIMIT = 4;
+const AIRLINE_FALLBACK = "Airline unavailable";
 const TravelWindowLogic = window.TravelWindows;
 
 const state = loadLocalState();
@@ -1243,7 +1244,7 @@ function normalizeDeal(deal) {
     ...deal,
     price: hasPrice(deal.price) ? Number(deal.price) : null,
     currency: deal.currency || "USD",
-    airlineName: deal.airlineName || deal.airlineCode || "Check Google Flights for airline",
+    airlineName: normalizeAirlineName(deal.airlineName, deal.airlineCode),
     maxStops: normalizeMaxStops(deal.maxStops),
     stopCount: normalizeStopCount(deal.stopCount),
     sourceName: deal.sourceName || "Google Flights",
@@ -1259,7 +1260,7 @@ function buildClientSearchCandidates(monitor) {
       ...trip,
       price: null,
       currency: "USD",
-      airlineName: "Check Google Flights for airline",
+      airlineName: AIRLINE_FALLBACK,
       maxStops: monitor.maxStops,
       stopCount: null,
       sourceName: "Google Flights",
@@ -1347,7 +1348,7 @@ function renderDeal(deal) {
   const template = document.querySelector("#dealTemplate");
   const node = template.content.firstElementChild.cloneNode(true);
   node.querySelector(".deal-route").textContent = deal.route;
-  node.querySelector(".deal-airline").textContent = deal.airlineName || deal.airlineCode || "Check Google Flights for airline";
+  node.querySelector(".deal-airline").textContent = normalizeAirlineName(deal.airlineName, deal.airlineCode);
   node.querySelector(".deal-dates").textContent = `${formatDate(deal.depart)} to ${formatDate(deal.returnDate)}`;
   node.querySelector(".deal-duration").textContent = formatDayCount(deal.length);
   node.querySelector(".deal-stops").textContent = formatDealStops(deal);
@@ -1367,6 +1368,14 @@ function renderDeal(deal) {
 
 function formatDealSourceName(deal) {
   return deal.sourceName || "Google Flights";
+}
+
+function normalizeAirlineName(name, code) {
+  const cleanName = String(name || "").trim();
+  const cleanCode = String(code || "").trim();
+  if (cleanName && cleanName !== "Check Google Flights for airline") return cleanName;
+  if (cleanCode) return cleanCode;
+  return AIRLINE_FALLBACK;
 }
 
 function buildGoogleFlightsUrlFromDeal(deal) {

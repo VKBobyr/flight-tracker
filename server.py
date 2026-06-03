@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 try:
   from fli.core import build_date_search_segments, build_flight_segments
   from fli.core.parsers import parse_airlines, parse_cabin_class, parse_max_stops, resolve_airport
+  from fli.models.airline import AIRLINE_NAMES
   from fli.models import DateSearchFilters, FlightSearchFilters, PassengerInfo, SortBy
   from fli.search import SearchDates, SearchFlights
 except ImportError:
@@ -28,6 +29,7 @@ except ImportError:
   parse_cabin_class = None
   parse_max_stops = None
   resolve_airport = None
+  AIRLINE_NAMES = {}
   DateSearchFilters = None
   FlightSearchFilters = None
   PassengerInfo = None
@@ -280,6 +282,7 @@ def flight_result_to_deal(pair: dict, result: object, depart: str, return_date: 
   airline_codes = []
   airline_names = []
   for flight in flights:
+    collect_primary_airline(flight, airline_codes, airline_names)
     collect_airlines(flight, airline_codes, airline_names)
   if excluded and any(code in excluded for code in airline_codes):
     return None
@@ -359,12 +362,13 @@ def enrich_single_deal_airline(deal: dict, excluded: set[str], max_stops: str) -
     deal["stopCount"] = best.get("stopCount")
   else:
     deal["airlineName"] = "Check Google Flights for airline"
-  write_cache(
-    flight_detail_cache,
-    cache_key,
-    {"airlineCode": deal.get("airlineCode", ""), "airlineName": deal.get("airlineName", ""), "stopCount": deal.get("stopCount")},
-    SWEEP_CACHE_TTL_SECONDS,
-  )
+  if best:
+    write_cache(
+      flight_detail_cache,
+      cache_key,
+      {"airlineCode": deal.get("airlineCode", ""), "airlineName": deal.get("airlineName", ""), "stopCount": deal.get("stopCount")},
+      SWEEP_CACHE_TTL_SECONDS,
+    )
   return deal, 1
 
 
@@ -381,16 +385,38 @@ def stop_count_from_flights(flights: tuple) -> int | None:
   return max(counts) if counts else None
 
 
+def collect_primary_airline(flight: object, airline_codes: list[str], airline_names: list[str]) -> None:
+  primary = getattr(flight, "primary_airline", None)
+  code, name = airline_code_and_name(primary)
+  if code:
+    airline_codes.append(code)
+  primary_name = getattr(flight, "primary_airline_name", None)
+  if primary_name:
+    airline_names.append(str(primary_name))
+  elif name:
+    airline_names.append(name)
+
+
 def collect_airlines(flight: object, airline_codes: list[str], airline_names: list[str]) -> None:
   for leg in getattr(flight, "legs", []) or []:
     airline = getattr(leg, "airline", None)
-    raw_code = getattr(airline, "name", "") or ""
-    code = raw_code.removeprefix("_").upper()
+    code, name = airline_code_and_name(airline)
     if code:
       airline_codes.append(code)
-    name = getattr(airline, "label", None) or getattr(airline, "display_name", None) or code
     if name:
-      airline_names.append(str(name))
+      airline_names.append(name)
+
+
+def airline_code_and_name(airline: object) -> tuple[str, str]:
+  if not airline:
+    return "", ""
+  raw_code = getattr(airline, "name", "") or ""
+  code = str(raw_code).removeprefix("_").upper()
+  enum_value = getattr(airline, "value", None)
+  name = str(enum_value) if enum_value and str(enum_value) != code else ""
+  if not name and code:
+    name = AIRLINE_NAMES.get(code, "")
+  return code, name
 
 
 def date_price_matches(result: object, monitor: dict, duration: int) -> bool:

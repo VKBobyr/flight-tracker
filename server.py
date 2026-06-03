@@ -619,7 +619,19 @@ def index_with_preview_meta(headers, query: dict[str, list[str]]) -> bytes:
     image_url = f"{image_url}?{urlencode({'m': encoded})}"
   meta = preview_meta_tags(context["title"], context["description"], current_url, image_url)
   html_body = (ROOT / "index.html").read_text("utf-8")
+  html_body = remove_default_preview_meta(html_body)
   return html_body.replace("<!-- link-preview-meta -->", meta).encode("utf-8")
+
+
+def remove_default_preview_meta(html_body: str) -> str:
+  start_marker = "    <!-- default-link-preview-meta-start -->"
+  end_marker = "    <!-- default-link-preview-meta-end -->"
+  start = html_body.find(start_marker)
+  end = html_body.find(end_marker)
+  if start < 0 or end < 0:
+    return html_body
+  end += len(end_marker)
+  return f"{html_body[:start]}{html_body[end:]}"
 
 
 def preview_meta_tags(title: str, description: str, url: str, image_url: str) -> str:

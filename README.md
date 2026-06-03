@@ -11,7 +11,7 @@ A flight fare dashboard with locally saved monitors, shareable monitor setup lin
 - Flexible earliest start and latest end dates plus minimum and maximum trip length. Trip max can be lower than min; sweeps normalize the range when searching.
 - Maximum stops filtering, defaulting new monitors to nonstop.
 - Manual sweeps across every saved monitor.
-- Top 5 priced fare results per monitor and across the latest sweep when running the local live-pricing server.
+- Top 4 priced fare results per monitor and across the latest sweep when running the local live-pricing server.
 - Static hosting falls back to direct Google Flights search links when live pricing is unavailable.
 - Monitor setup is saved locally and can be shared through an explicit share link without bundling historical sweep data.
 - Opening a share link lets you combine the shared monitors with your local list or replace your local list.

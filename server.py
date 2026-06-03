@@ -38,7 +38,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent
 MAX_BODY_BYTES = 2 * 1024 * 1024
-TOP_DEAL_LIMIT = 5
+TOP_DEAL_LIMIT = 4
 MAX_FLI_QUERIES_PER_MONITOR = 80
 SWEEP_CACHE_TTL_SECONDS = int(os.environ.get("SWEEP_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
 RATE_WINDOW_SECONDS = int(os.environ.get("RATE_WINDOW_SECONDS", "3600"))
@@ -295,6 +295,7 @@ def flight_result_to_deal(pair: dict, result: object, depart: str, return_date: 
     "currency": "USD",
     "airlineCode": ", ".join(unique_values(airline_codes)),
     "airlineName": ", ".join(unique_values(airline_names)) or "Check Google Flights for airline",
+    "stopCount": stop_count_from_flights(flights),
     "sourceName": "Google Flights",
     "sourceUrl": google_flights_url(pair["origin"], pair["destination"], depart, return_date),
     "provider": "fli",
@@ -355,15 +356,29 @@ def enrich_single_deal_airline(deal: dict, excluded: set[str], max_stops: str) -
   if best:
     deal["airlineCode"] = best.get("airlineCode", "")
     deal["airlineName"] = best.get("airlineName") or "Check Google Flights for airline"
+    deal["stopCount"] = best.get("stopCount")
   else:
     deal["airlineName"] = "Check Google Flights for airline"
   write_cache(
     flight_detail_cache,
     cache_key,
-    {"airlineCode": deal.get("airlineCode", ""), "airlineName": deal.get("airlineName", "")},
+    {"airlineCode": deal.get("airlineCode", ""), "airlineName": deal.get("airlineName", ""), "stopCount": deal.get("stopCount")},
     SWEEP_CACHE_TTL_SECONDS,
   )
   return deal, 1
+
+
+def stop_count_from_flights(flights: tuple) -> int | None:
+  counts = []
+  for flight in flights:
+    legs = getattr(flight, "legs", None)
+    if legs is None:
+      continue
+    try:
+      counts.append(max(0, len(legs) - 1))
+    except TypeError:
+      counts.append(max(0, len(list(legs)) - 1))
+  return max(counts) if counts else None
 
 
 def collect_airlines(flight: object, airline_codes: list[str], airline_names: list[str]) -> None:

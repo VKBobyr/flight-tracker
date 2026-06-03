@@ -16,7 +16,7 @@
     <meta name="twitter:description" content="Build flexible flight monitors and sweep Google Flights for direct date-window searches.">
     <meta name="twitter:image" content="assets/flight-tracker-logo.png">
     <!-- default-link-preview-meta-end -->
-    <link rel="stylesheet" href="styles.css?v=2026-06-03-route-title">
+    <link rel="stylesheet" href="styles.css?v=2026-06-03-ticket-deals">
   </head>
   <body>
     <div class="app-shell">
@@ -192,11 +192,16 @@
     <template id="dealTemplate">
       <a class="deal-row" target="_blank" rel="noopener noreferrer">
         <div class="deal-copy">
-          <strong class="deal-route"></strong>
+          <div class="deal-route-line">
+            <strong class="deal-route"></strong>
+            <span class="deal-stops"></span>
+          </div>
           <span class="deal-meta">
             <span class="deal-airline"></span>
-            <span class="deal-dates"></span>
-            <span class="deal-duration"></span>
+            <span class="deal-details">
+              <span class="deal-dates"></span>
+              <span class="deal-duration"></span>
+            </span>
           </span>
         </div>
         <div class="deal-value">
@@ -207,6 +212,6 @@
     </template>
 
     <script src="travel-windows.js?v=2026-06-02-window-tests-2"></script>
-    <script src="app.js?v=2026-06-03-route-title"></script>
+    <script src="app.js?v=2026-06-03-ticket-deals"></script>
   </body>
 </html>

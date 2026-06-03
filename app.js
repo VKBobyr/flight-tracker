@@ -82,7 +82,7 @@ const CLIENT_DB_KEY = "default";
 const CLIENT_ID_KEY = "flight-tracker-client-id-v1";
 const MONITOR_URL_PARAM = "m";
 const SWEEP_API_URL = "/api/sweep";
-const TOP_DEAL_LIMIT = 5;
+const TOP_DEAL_LIMIT = 4;
 const TravelWindowLogic = window.TravelWindows;
 
 const state = loadLocalState();
@@ -1255,6 +1255,7 @@ function normalizeDeal(deal) {
     currency: deal.currency || "USD",
     airlineName: deal.airlineName || deal.airlineCode || "Check Google Flights for airline",
     maxStops: normalizeMaxStops(deal.maxStops),
+    stopCount: normalizeStopCount(deal.stopCount),
     sourceName: deal.sourceName || "Google Flights",
     sourceUrl: deal.sourceUrl || buildGoogleFlightsUrlFromDeal(deal),
     provider: deal.provider || "client",
@@ -1270,6 +1271,7 @@ function buildClientSearchCandidates(monitor) {
       currency: "USD",
       airlineName: "Check Google Flights for airline",
       maxStops: monitor.maxStops,
+      stopCount: null,
       sourceName: "Google Flights",
       sourceUrl: buildGoogleFlightsUrl(trip.origin, trip.destination, trip.depart, trip.returnDate),
       provider: "client",
@@ -1378,6 +1380,7 @@ function renderDeal(deal) {
   node.querySelector(".deal-airline").textContent = deal.airlineName || deal.airlineCode || "Check Google Flights for airline";
   node.querySelector(".deal-dates").textContent = `${formatDate(deal.depart)} to ${formatDate(deal.returnDate)}`;
   node.querySelector(".deal-duration").textContent = formatDayCount(deal.length);
+  node.querySelector(".deal-stops").textContent = formatDealStops(deal);
   node.querySelector(".deal-source").textContent = formatDealSourceName(deal);
   const price = node.querySelector(".deal-price");
   if (hasPrice(deal.price)) {
@@ -1569,7 +1572,7 @@ function renderMonitors() {
 
     const dealsList = card.querySelector(".deals-list");
     if (monitor.topDeals.length) {
-      monitor.topDeals.forEach((deal) => dealsList.appendChild(renderDeal(deal)));
+      monitor.topDeals.slice(0, TOP_DEAL_LIMIT).forEach((deal) => dealsList.appendChild(renderDeal(deal)));
     } else {
       dealsList.innerHTML = `<p class="empty-state">Run a sweep to show this monitor’s top ${TOP_DEAL_LIMIT} Google Flights searches.</p>`;
     }
@@ -1792,6 +1795,25 @@ function formatStops(value) {
   const maxStops = normalizeMaxStops(value);
   if (maxStops === "ANY") return "any stops";
   if (maxStops === "0") return "nonstop";
+  if (maxStops === "1") return "1 stop max";
+  return "2 stops max";
+}
+
+function normalizeStopCount(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : null;
+}
+
+function formatDealStops(deal) {
+  const stopCount = normalizeStopCount(deal.stopCount);
+  if (stopCount !== null) {
+    if (stopCount === 0) return "Nonstop";
+    return `${formatInteger(stopCount)} ${stopCount === 1 ? "stop" : "stops"}`;
+  }
+  const maxStops = normalizeMaxStops(deal.maxStops);
+  if (maxStops === "ANY") return "Any stops";
+  if (maxStops === "0") return "Nonstop";
   if (maxStops === "1") return "1 stop max";
   return "2 stops max";
 }

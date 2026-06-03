@@ -391,6 +391,10 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 46px;
 }
 
+.date-grid {
+  max-width: 420px;
+}
+
 .field {
   position: relative;
   min-width: 0;
@@ -403,6 +407,7 @@ button:disabled {
 
 .field input,
 .field select {
+  box-sizing: border-box;
   min-width: 0;
   max-width: 100%;
   width: 100%;
@@ -415,6 +420,12 @@ button:disabled {
   outline: none;
   box-shadow: var(--hairline);
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.date-grid input[type="date"] {
+  min-width: 0;
+  width: min(100%, 190px);
+  justify-self: start;
 }
 
 .search-field input {
@@ -1648,6 +1659,18 @@ button:disabled {
   .airline-filter,
   .metric-strip {
     grid-template-columns: 1fr;
+  }
+
+  .date-grid {
+    max-width: 100%;
+  }
+
+  .date-grid input[type="date"] {
+    width: 100%;
+    max-width: 100%;
+    justify-self: stretch;
+    padding-inline: 11px 8px;
+    font-size: 0.95rem;
   }
 
   .airport-grid {

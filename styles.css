@@ -103,8 +103,6 @@ button:disabled {
 
 .brand-copy {
   min-width: 0;
-  display: grid;
-  gap: 3px;
 }
 
 .topbar h1,
@@ -122,16 +120,6 @@ button:disabled {
   line-height: 0.94;
   font-weight: 700;
   letter-spacing: -0.01em;
-}
-
-.brand-subtitle {
-  margin: 0;
-  color: color-mix(in srgb, var(--accent-dark) 74%, var(--muted));
-  font-size: clamp(0.66rem, 1.15vw, 0.74rem);
-  font-weight: 720;
-  letter-spacing: 0.12em;
-  line-height: 1.1;
-  text-transform: uppercase;
 }
 
 .eyebrow {
@@ -1451,11 +1439,6 @@ button:disabled {
 
   .topbar h1 {
     font-size: clamp(2rem, 13vw, 2.55rem);
-  }
-
-  .brand-subtitle {
-    font-size: 0.62rem;
-    letter-spacing: 0.11em;
   }
 
   .topbar-actions {

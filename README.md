@@ -1,21 +1,21 @@
 # Fareless
 
-An elegant fare dashboard with locally saved monitors, shareable monitor setup links, and live Google Flights pricing through a local Fli-powered sweep endpoint.
+An elegant fare dashboard with locally saved trips, shareable trip setup links, and live Google Flights pricing through a local Fli-powered fare endpoint.
 
 ## Features
 
-- Add multiple route monitors at the same time.
-- Add multiple airport pairs to the same monitor.
+- Add multiple flexible trips at the same time.
+- Add multiple airport pairs to the same trip.
 - Fuzzy airport search by IATA code, airport name, city, or country.
 - Fuzzy airline search for excluded airlines.
-- Flexible earliest start and latest end dates plus minimum and maximum trip length. Trip max can be lower than min; sweeps normalize the range when searching.
-- Maximum stops filtering, defaulting new monitors to nonstop.
-- Manual sweeps across every saved monitor.
-- Six curated fare results per monitor and across the latest sweep when running the local live-pricing server, including cheapest, best value, longest low fare, shortest, earliest good fare, and next cheapest.
+- Flexible earliest start and latest end dates plus minimum and maximum trip length. Trip max can be lower than min; fare searches normalize the range when searching.
+- Maximum stops filtering, defaulting new trips to nonstop.
+- Manual fare searches across every saved trip.
+- Smart curated fare results per trip, including best overall, best value, cheapest per route, best trip length, and same-price alternatives.
 - Static hosting falls back to direct Google Flights search links when live pricing is unavailable.
-- Monitor setup is saved locally and can be shared through an explicit share link without bundling historical sweep data.
-- Opening a share link lets you combine the shared monitors with your local list or replace your local list.
-- Saved sweep observations live locally in the browser and are keyed to the monitor setup.
+- Trip setup is saved locally and can be shared through an explicit share link without bundling saved fare data.
+- Opening a share link lets you combine the shared trips with your local list or replace your local list.
+- Saved fare observations live locally in the browser and are keyed to the trip setup.
 
 ## Run
 
@@ -34,7 +34,7 @@ If you already have the project virtualenv, run:
 .venv/bin/python server.py --port 8001
 ```
 
-The server provides `/api/sweep` for live fare lookup and otherwise serves static files. Monitor setup plus sweep observations live in this browser's IndexedDB/localStorage cache. Share links include only monitor setup; after a link is imported or dismissed, the URL is cleaned up. If monitor setup changes meaningfully, previous sweep data no longer attaches to that monitor.
+The server provides `/api/sweep` for live fare lookup and otherwise serves static files. Trip setup plus fare observations live in this browser's IndexedDB/localStorage cache. Share links include only trip setup; after a link is imported or dismissed, the URL is cleaned up. If trip setup changes meaningfully, previous fare data no longer attaches to that trip.
 
 ## Deploy
 
@@ -57,7 +57,7 @@ Those settings keep the service inexpensive and limit abuse while the app is sti
 
 If you deploy from a prebuilt container instead of source, build and push this repository's `Dockerfile`, then deploy the image with the same Cloud Run limits.
 
-The server caches live sweep results for matching monitor setups before applying rate limits, and also caches each route/date/duration provider query so small monitor edits can reuse recent results. Defaults are 6 hours of cached fare results, 12 uncached sweeps per browser client per hour, and 30 uncached sweeps per IP per hour. Tune them with:
+The server caches live fare results for matching trip setups before applying rate limits, and also caches each route/date/duration provider query so small trip edits can reuse recent results. Defaults are 6 hours of cached fare results, 12 uncached fare searches per browser client per hour, and 30 uncached fare searches per IP per hour. Tune them with:
 
 ```sh
 gcloud run services update flight-tracker \
@@ -68,9 +68,9 @@ gcloud run services update flight-tracker \
 
 ## Security posture
 
-The deployed Cloud Run service is public so shared dashboards and live sweeps can work without user accounts. The runtime service account should not have project-level IAM roles, and Cloud Run should stay constrained with `--max-instances 1` and `--concurrency 1` unless you add stronger abuse controls.
+The deployed Cloud Run service is public so shared dashboards and live fare searches can work without user accounts. The runtime service account should not have project-level IAM roles, and Cloud Run should stay constrained with `--max-instances 1` and `--concurrency 1` unless you add stronger abuse controls.
 
-The app does not ship API keys to the browser. Sweep requests go through `/api/sweep`, which validates JSON content type, limits request size, caps monitor breadth, caches repeat searches, and applies in-process client/IP rate limits. Those limits reduce casual abuse but are not a hard billing cap: they reset on container restart and are not durable across multiple instances. For a public launch, put Cloud Armor or Firebase/App Check-style protection in front of the service, or require lightweight Google sign-in.
+The app does not ship API keys to the browser. Fare requests go through `/api/sweep`, which validates JSON content type, limits request size, caps trip breadth, caches repeat searches, and applies in-process client/IP rate limits. Those limits reduce casual abuse but are not a hard billing cap: they reset on container restart and are not durable across multiple instances. For a public launch, put Cloud Armor or Firebase/App Check-style protection in front of the service, or require lightweight Google sign-in.
 
 Local data files are intentionally excluded from git and Docker build contexts:
 
@@ -80,7 +80,7 @@ Local data files are intentionally excluded from git and Docker build contexts:
 
 ## Data source
 
-Local sweeps call the `flights` Python package, whose importable module is `fli`, from `server.py`. Fli queries Google Flights server-side and the app stores the returned fare prices and available carrier details in browser storage.
+Live fare searches call the `flights` Python package, whose importable module is `fli`, from `server.py`. Fli queries Google Flights server-side and the app stores the returned fare prices and available carrier details in browser storage.
 
 When `/api/sweep` is unavailable, such as on GitHub Pages, the app falls back to client-side Google Flights search links. That fallback cannot show live prices or airlines because Google Flights does not expose a browser-accessible public fare API.
 

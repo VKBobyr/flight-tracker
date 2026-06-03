@@ -103,6 +103,8 @@ button:disabled {
 
 .brand-copy {
   min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .topbar h1,
@@ -525,6 +527,7 @@ button:disabled {
 .secondary-button,
 .tertiary-button,
 .ghost-button,
+.share-button,
 .danger-button,
 .stepper-button,
 .max-length-button {
@@ -558,6 +561,7 @@ button:disabled {
 .secondary-button,
 .tertiary-button,
 .ghost-button,
+.share-button,
 .danger-button {
   min-height: 42px;
   border: 1px solid transparent;
@@ -621,6 +625,26 @@ button:disabled {
   color: var(--ink);
   border-color: var(--line);
   background: rgba(255, 255, 255, 0.58);
+}
+
+.share-button {
+  gap: 7px;
+  color: var(--ink);
+  border-color: rgba(90, 112, 126, 0.24);
+  background: transparent;
+  box-shadow: none;
+}
+
+.share-button span:first-child {
+  color: var(--accent-dark);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.share-button:hover,
+.share-button:focus {
+  border-color: rgba(10, 132, 255, 0.34);
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .danger-button {
@@ -929,6 +953,14 @@ button:disabled {
   transform: translateY(-1px);
 }
 
+.deal-row.is-highlighted {
+  border-color: rgba(10, 132, 255, 0.34);
+  background:
+    linear-gradient(90deg, rgba(10, 132, 255, 0.13), transparent 38px),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.74), rgba(237, 247, 255, 0.66));
+  box-shadow: 0 12px 28px rgba(23, 61, 112, 0.12), var(--hairline);
+}
+
 .deal-row:focus-visible {
   outline: 3px solid rgba(10, 132, 255, 0.16);
   outline-offset: 2px;
@@ -971,18 +1003,10 @@ button:disabled {
   white-space: nowrap;
 }
 
-.deal-stops {
-  flex: 0 0 auto;
-  min-height: 22px;
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid rgba(10, 132, 255, 0.16);
-  border-radius: 999px;
-  padding: 0 8px;
-  background: rgba(255, 255, 255, 0.56);
-  color: var(--accent-dark);
-  font-size: 0.68rem;
-  font-weight: 780;
+.deal-row.is-highlighted .deal-reason {
+  color: #fff;
+  border-color: rgba(10, 132, 255, 0.18);
+  background: linear-gradient(135deg, #1267e8, #1696f2 54%, #6f68f2);
 }
 
 .deal-meta {
@@ -1008,15 +1032,57 @@ button:disabled {
 
 .deal-details {
   display: inline-flex;
-  gap: 7px;
+  gap: 0;
   align-items: center;
+  flex-wrap: wrap;
   color: var(--muted);
 }
 
-.deal-duration::before {
+.deal-duration::before,
+.deal-stops::before {
   content: "·";
   margin-right: 7px;
+  margin-left: 7px;
   color: rgba(90, 112, 126, 0.58);
+}
+
+.same-price-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.same-price-list[hidden] {
+  display: none;
+}
+
+.same-price-chip,
+.same-price-more {
+  min-width: 0;
+  border: 1px solid rgba(10, 132, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.56);
+  padding: 4px 7px;
+  color: var(--accent-dark);
+  line-height: 1;
+}
+
+.same-price-chip {
+  cursor: pointer;
+}
+
+.same-price-chip:hover,
+.same-price-chip:focus {
+  background: var(--accent-soft);
+}
+
+.same-price-more {
+  color: var(--muted);
 }
 
 .deal-value {
@@ -1436,7 +1502,7 @@ button:disabled {
   }
 
   .brand-lockup {
-    align-items: flex-start;
+    align-items: center;
     gap: 11px;
   }
 
@@ -1642,7 +1708,22 @@ button:disabled {
   }
 
   .topbar-actions {
-    grid-template-columns: 1fr;
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .share-button {
+    width: 42px;
+    justify-self: start;
+    padding-inline: 0;
+  }
+
+  .share-button-copy {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .section-actions {

@@ -41,7 +41,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent
 MAX_BODY_BYTES = 2 * 1024 * 1024
-TOP_DEAL_LIMIT = 6
+TOP_DEAL_LIMIT = 12
 MAX_FLI_QUERIES_PER_MONITOR = 80
 MAX_PAIRS_PER_MONITOR = 12
 MAX_EXCLUDED_AIRLINES = 24
@@ -153,7 +153,7 @@ def normalize_monitor(monitor: dict) -> dict:
       pairs.append({"origin": origin, "destination": destination})
       seen_pairs.add(key)
   if not pairs:
-    raise ValueError("Add at least one airport pair before sweeping")
+    raise ValueError("Add at least one airport pair before finding fares")
 
   start_from = parse_date(monitor.get("startFrom"), "startFrom")
   start_to = parse_date(monitor.get("startTo"), "startTo")
@@ -537,34 +537,103 @@ def curate_top_deals(candidates: list[dict], limit: int = TOP_DEAL_LIMIT) -> lis
   selected: list[dict] = []
   selected_keys: set[tuple] = set()
 
-  def add(reason: str, deal: dict | None) -> None:
+  def add(reason: str, deal: dict | None, *, highlight: str = "") -> None:
     if not deal or len(selected) >= limit:
       return
     key = deal_identity(deal)
     if key in selected_keys:
       return
     selected_keys.add(key)
-    selected.append(with_deal_reason(deal, reason))
+    selected.append(with_deal_reason(deal, reason, highlight=highlight))
 
   low_fares = [deal for deal in priced if deal["price"] <= low_fare_ceiling]
-  add("Cheapest", min(priced, key=deal_sort_key))
-  add("Best value", min(priced, key=lambda deal: (price_per_day(deal), deal_sort_key(deal))))
+  add("Best overall", min(priced, key=deal_sort_key), highlight="primary")
+  add("Best value", min(priced, key=lambda deal: (price_per_day(deal), deal_sort_key(deal))), highlight="primary")
+
+  route_slots = max(2, min(4, limit // 3))
+  for route, route_deals in sorted(group_deals(priced, route_key).items(), key=lambda item: deal_sort_key(min(item[1], key=deal_sort_key)))[:route_slots]:
+    add(f"Cheapest {route}", min(route_deals, key=deal_sort_key))
+
+  length_slots = max(2, min(4, limit // 3))
+  for length, length_deals in sorted(group_deals(priced, length_key).items(), key=lambda item: (safe_length_value(item[0]), deal_sort_key(min(item[1], key=deal_sort_key))))[:length_slots]:
+    add(f"Best {length}-day trip", min(length_deals, key=deal_sort_key))
+
   add("Longest low fare", max(low_fares, key=lambda deal: (int(deal.get("length") or 0), -float(deal.get("price") or 0), str(deal.get("depart") or ""))) if low_fares else None)
-  add("Shortest", min(priced, key=lambda deal: (int(deal.get("length") or 0), deal_sort_key(deal))))
+  add("Shortest trip", min(priced, key=lambda deal: (int(deal.get("length") or 0), deal_sort_key(deal))))
   add("Earliest good fare", min(low_fares, key=lambda deal: (str(deal.get("depart") or ""), deal_sort_key(deal))) if low_fares else None)
 
   for deal in sorted(priced, key=deal_sort_key):
-    add("Next cheapest", deal)
+    add("Also good", deal)
     if len(selected) >= limit:
       break
 
-  return selected
+  return [with_same_price_matches(deal, priced) for deal in selected]
 
 
-def with_deal_reason(deal: dict, reason: str) -> dict:
+def group_deals(deals: list[dict], key_fn) -> dict[str, list[dict]]:
+  groups: dict[str, list[dict]] = {}
+  for deal in deals:
+    key = key_fn(deal)
+    if key:
+      groups.setdefault(key, []).append(deal)
+  return groups
+
+
+def route_key(deal: dict) -> str:
+  return str(deal.get("route") or "").strip()
+
+
+def length_key(deal: dict) -> str:
+  return str(int(deal.get("length") or 0))
+
+
+def safe_length_value(value: str) -> int:
+  try:
+    return int(value)
+  except Exception:
+    return 0
+
+
+def with_deal_reason(deal: dict, reason: str, *, highlight: str = "") -> dict:
   next_deal = dict(deal)
   next_deal["dealReason"] = reason
+  if highlight:
+    next_deal["dealHighlight"] = highlight
   return next_deal
+
+
+def with_same_price_matches(deal: dict, priced: list[dict]) -> dict:
+  price = deal.get("price")
+  if not isinstance(price, (int, float)):
+    return deal
+  key = deal_identity(deal)
+  matches = [
+    match
+    for match in sorted(priced, key=deal_sort_key)
+    if match.get("price") == price and deal_identity(match) != key
+  ]
+  if not matches:
+    return deal
+  next_deal = dict(deal)
+  next_deal["samePriceMatches"] = [compact_related_deal(match) for match in matches[:4]]
+  next_deal["samePriceTotal"] = len(matches)
+  return next_deal
+
+
+def compact_related_deal(deal: dict) -> dict:
+  return {
+    "route": deal.get("route"),
+    "origin": deal.get("origin"),
+    "destination": deal.get("destination"),
+    "depart": deal.get("depart"),
+    "returnDate": deal.get("returnDate"),
+    "length": deal.get("length"),
+    "stopCount": deal.get("stopCount"),
+    "maxStops": deal.get("maxStops"),
+    "airlineName": deal.get("airlineName"),
+    "airlineCode": deal.get("airlineCode"),
+    "sourceUrl": deal.get("sourceUrl"),
+  }
 
 
 def deal_identity(deal: dict) -> tuple:
@@ -738,7 +807,7 @@ def shared_preview_context(encoded: str | None) -> dict:
     exclusions = sorted({code for monitor in monitors for code in monitor.get("excludedAirlines", [])})
     stop_rules = sorted({format_stops(monitor.get("maxStops", 0)) for monitor in monitors})
     description_parts = [
-      f"{monitor_count} {plural(monitor_count, 'monitor')}",
+      f"{monitor_count} {plural(monitor_count, 'trip')}",
       f"{pair_count} airport {plural(pair_count, 'pair')}",
       date_summary,
     ]
@@ -749,7 +818,7 @@ def shared_preview_context(encoded: str | None) -> dict:
     description = " • ".join(part for part in description_parts if part)
   else:
     title = "Fareless"
-    description = "Build flexible fare monitors and sweep Google Flights for direct date-window searches."
+    description = "Build flexible trips and find Google Flights fares across date windows."
 
   return {
     "monitors": monitors,
@@ -973,7 +1042,7 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
       allowed, retry_after = check_rate_limit(self.client_id(), self.client_ip())
       if not allowed:
         self.send_json(
-          {"error": "Too many sweeps. Please wait a bit before running another search."},
+          {"error": "Too many fare searches. Please wait a bit before trying again."},
           status=HTTPStatus.TOO_MANY_REQUESTS,
           headers={"Retry-After": str(retry_after)},
         )

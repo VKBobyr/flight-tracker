@@ -82,7 +82,7 @@ const CLIENT_DB_KEY = "default";
 const CLIENT_ID_KEY = "flight-tracker-client-id-v1";
 const MONITOR_URL_PARAM = "m";
 const SWEEP_API_URL = "/api/sweep";
-const TOP_DEAL_LIMIT = 6;
+const TOP_DEAL_LIMIT = 12;
 const AIRLINE_FALLBACK = "Airline unavailable";
 const TravelWindowLogic = window.TravelWindows;
 
@@ -107,7 +107,6 @@ const destinationSelected = document.querySelector("#destinationSelected");
 const originSuggestions = document.querySelector("#originSuggestions");
 const destinationSuggestions = document.querySelector("#destinationSuggestions");
 const monitorGrid = document.querySelector("#monitorGrid");
-const monitorCount = document.querySelector("#monitorCount");
 const lastSweepAt = document.querySelector("#lastSweepAt");
 const sweepProgress = document.querySelector("#sweepProgress");
 const sweepProgressTitle = document.querySelector("#sweepProgressTitle");
@@ -440,7 +439,7 @@ function readMonitorsFromUrl() {
     const decoded = jsonFromBase64Url(encoded);
     return monitorsFromSharePayload(decoded);
   } catch (error) {
-    console.warn("Could not read monitor setup from URL.", error);
+    console.warn("Could not read trip setup from URL.", error);
     return null;
   }
 }
@@ -515,7 +514,7 @@ function monitorsFromSharePayload(payload) {
 
 async function shareMonitors() {
   if (!state.monitors.length) {
-    showToast("Add a monitor before sharing.");
+    showToast("Add a trip before sharing.");
     return;
   }
   const shareUrl = buildShareUrl(state.monitors);
@@ -531,15 +530,18 @@ async function shareMonitors() {
 }
 
 function confirmShareLinkCopied() {
-  temporarilyConfirmShareButton("Link copied");
+  temporarilyConfirmShareButton("Copied");
   showToast("Link copied.");
 }
 
 function temporarilyConfirmShareButton(label) {
-  const originalText = shareMonitorsButton.textContent;
-  shareMonitorsButton.textContent = label;
+  const copy = shareMonitorsButton.querySelector(".share-button-copy");
+  const originalText = copy ? copy.textContent : shareMonitorsButton.textContent;
+  if (copy) copy.textContent = label;
+  else shareMonitorsButton.textContent = label;
   window.setTimeout(() => {
-    shareMonitorsButton.textContent = originalText;
+    if (copy) copy.textContent = originalText;
+    else shareMonitorsButton.textContent = originalText;
   }, 1800);
 }
 
@@ -557,7 +559,7 @@ function promptForSharedMonitors() {
   }
   if (!incoming.length) {
     clearSharedMonitorUrl();
-    showToast("That share link did not include any valid monitors.");
+    showToast("That share link did not include any valid trips.");
     return;
   }
   sharedImportPrompted = true;
@@ -585,14 +587,14 @@ function consumeSharedMonitors(mode) {
   saveState();
   render();
   showToast(mode === "replace"
-    ? `Replaced with ${formatMonitorCount(incoming.length)}.`
-    : `Combined ${formatMonitorCount(incoming.length)} from the share link.`);
+    ? `Replaced with ${formatTripCount(incoming.length)}.`
+    : `Combined ${formatTripCount(incoming.length)} from the share link.`);
 }
 
 function dismissSharedImport() {
   closeSharedImportPrompt();
   clearSharedMonitorUrl();
-  showToast("Kept your current monitors.");
+    showToast("Kept your current trips.");
 }
 
 function closeSharedImportPrompt() {
@@ -850,7 +852,7 @@ function saveMonitorFromForm(event) {
   if (editingMonitorId) {
     const index = state.monitors.findIndex((monitor) => monitor.id === editingMonitorId);
     if (index < 0) {
-      showToast("That monitor is no longer available.");
+      showToast("That trip is no longer available.");
       closeCreateMonitorOverlay();
       return;
     }
@@ -889,7 +891,7 @@ function saveMonitorFromForm(event) {
   render();
   resetMonitorForm();
   closeCreateMonitorOverlay();
-  showToast(`Monitoring ${formatPairCount(monitor.pairs.length)}.`);
+    showToast(`Added ${formatPairCount(monitor.pairs.length)}.`);
 }
 
 function openCreateMonitorOverlay() {
@@ -928,10 +930,10 @@ function closeCreateMonitorOverlay() {
 
 function setMonitorOverlayMode(mode) {
   const isEdit = mode === "edit";
-  builderEyebrow.textContent = isEdit ? "Edit monitor" : "Create monitor";
+  builderEyebrow.textContent = isEdit ? "Edit trip" : "Create trip";
   builderTitle.textContent = isEdit ? "Update route and dates" : "Route and dates";
-  monitorSubmitButton.textContent = isEdit ? "Save changes" : "Add monitor";
-  closeCreateMonitorButton.setAttribute("aria-label", isEdit ? "Close edit monitor" : "Close create monitor");
+  monitorSubmitButton.textContent = isEdit ? "Save changes" : "Add trip";
+  closeCreateMonitorButton.setAttribute("aria-label", isEdit ? "Close edit trip" : "Close create trip");
 }
 
 function resetMonitorForm() {
@@ -1153,11 +1155,11 @@ function clearCurrentPair() {
 
 async function runSweepForAll(manual) {
   if (!state.monitors.length) {
-    showToast("Add at least one monitor first.");
+    showToast("Add at least one trip first.");
     return;
   }
   if (sweepState.isSweeping) {
-    showToast("A sweep is already running.");
+    showToast("Fare search is already running.");
     return;
   }
 
@@ -1174,10 +1176,10 @@ async function runSweepForAll(manual) {
     saveState();
     finishSweepProgress();
     render();
-    showToast("Searches ready.");
+    showToast("Fares ready.");
   } catch (error) {
     finishSweepProgress();
-    showToast(error.message || "Sweep failed.");
+    showToast(error.message || "Fare search failed.");
     throw error;
   }
 }
@@ -1189,7 +1191,7 @@ async function runSweep(monitorId, manual, options = {}) {
 
   const sweep = await fetchPricedSweep(monitor);
   if (!sweep.topDeals.length) {
-    showToast("No priced trips found for this monitor.");
+    showToast("No priced fares found for this trip.");
     return false;
   }
   monitor.lastRunAt = sweep.ranAt;
@@ -1200,7 +1202,7 @@ async function runSweep(monitorId, manual, options = {}) {
     showToast("Live pricing is unavailable here. Showing Google Flights searches instead.");
   }
   if (sweep.cacheStatus === "hit") {
-    showToast("Reused recent fare results for this monitor.");
+    showToast("Reused recent fare results for this trip.");
   }
   if (Array.isArray(sweep.providerErrors) && sweep.providerErrors.length) {
     showToast(`${formatInteger(sweep.providerErrors.length)} live fare ${sweep.providerErrors.length === 1 ? "search" : "searches"} returned partial data.`);
@@ -1225,7 +1227,7 @@ async function fetchPricedSweep(monitor) {
     });
     if (response.status === 429) {
       const payload = await response.json().catch(() => ({}));
-      const error = new Error(payload.error || "Too many sweeps. Please wait a bit before running another search.");
+    const error = new Error(payload.error || "Too many fare searches. Please wait a bit before trying again.");
       error.isRateLimit = true;
       throw error;
     }
@@ -1233,7 +1235,7 @@ async function fetchPricedSweep(monitor) {
     return response.json();
   } catch (error) {
     if (error.isRateLimit) throw error;
-    console.warn("Live fare sweep unavailable; falling back to client search links.", error);
+    console.warn("Live fare lookup unavailable; falling back to client search links.", error);
     return buildClientSweep(monitor);
   }
 }
@@ -1274,6 +1276,19 @@ function normalizeDeal(deal) {
     sourceUrl: deal.sourceUrl || buildGoogleFlightsUrlFromDeal(deal),
     provider: deal.provider || "client",
     dealReason: String(deal.dealReason || "").trim(),
+    dealHighlight: String(deal.dealHighlight || "").trim(),
+    samePriceMatches: Array.isArray(deal.samePriceMatches) ? deal.samePriceMatches.map(normalizeRelatedDeal) : [],
+    samePriceTotal: Math.max(0, Math.trunc(Number(deal.samePriceTotal) || 0)),
+  };
+}
+
+function normalizeRelatedDeal(deal) {
+  return {
+    ...deal,
+    airlineName: normalizeAirlineName(deal.airlineName, deal.airlineCode),
+    maxStops: normalizeMaxStops(deal.maxStops),
+    stopCount: normalizeStopCount(deal.stopCount),
+    sourceUrl: deal.sourceUrl || buildGoogleFlightsUrlFromDeal(deal),
   };
 }
 
@@ -1298,14 +1313,14 @@ function startSweepProgress(total) {
   sweepState.total = total;
   sweepState.completed = 0;
   runAllButton.disabled = true;
-  runAllButton.textContent = "Sweeping...";
+  runAllButton.textContent = "Finding...";
   sweepProgress.hidden = false;
-  updateSweepProgress("Generating Google Flights searches");
+  updateSweepProgress("Preparing Google Flights searches");
 }
 
 function updateSweepProgress(message) {
   const percent = sweepState.total ? (sweepState.completed / sweepState.total) * 100 : 0;
-  sweepProgressTitle.textContent = `Sweeping ${formatInteger(sweepState.total)} ${sweepState.total === 1 ? "monitor" : "monitors"}`;
+  sweepProgressTitle.textContent = `Finding fares for ${formatInteger(sweepState.total)} ${sweepState.total === 1 ? "trip" : "trips"}`;
   sweepProgressText.textContent = `${formatInteger(sweepState.completed)} of ${formatInteger(sweepState.total)} complete · ${message}`;
   sweepProgressBar.style.width = `${percent}%`;
 }
@@ -1317,10 +1332,10 @@ function completeSweepProgressStep() {
 
 function finishSweepProgress() {
   sweepState.completed = sweepState.total;
-  updateSweepProgress("Searches ready");
+  updateSweepProgress("Fares ready");
   sweepProgressBar.style.width = "100%";
   runAllButton.disabled = false;
-  runAllButton.textContent = "Run sweep";
+  runAllButton.textContent = "Find fares";
   setTimeout(() => {
     if (!sweepState.isSweeping) sweepProgress.hidden = true;
   }, 900);
@@ -1350,26 +1365,81 @@ function curateClientDeals(candidates, limit = TOP_DEAL_LIMIT) {
   const lowFares = priced.filter((deal) => Number(deal.price) <= lowFareCeiling);
   const selected = [];
   const selectedKeys = new Set();
-  const addDeal = (reason, deal) => {
+  const addDeal = (reason, deal, options = {}) => {
     if (!deal || selected.length >= limit) return;
     const key = dealIdentity(deal);
     if (selectedKeys.has(key)) return;
     selectedKeys.add(key);
-    selected.push({ ...deal, dealReason: reason });
+    selected.push({ ...deal, dealReason: reason, dealHighlight: options.highlight || "" });
   };
 
-  addDeal("Cheapest", priced.slice().sort(compareDeals)[0]);
-  addDeal("Best value", priced.slice().sort((a, b) => pricePerDay(a) - pricePerDay(b) || compareDeals(a, b))[0]);
+  addDeal("Best overall", priced.slice().sort(compareDeals)[0], { highlight: "primary" });
+  addDeal("Best value", priced.slice().sort((a, b) => pricePerDay(a) - pricePerDay(b) || compareDeals(a, b))[0], { highlight: "primary" });
+
+  const routeSlots = Math.max(2, Math.min(4, Math.floor(limit / 3)));
+  groupDeals(priced, (deal) => deal.route)
+    .sort((a, b) => compareDeals(a.best, b.best))
+    .slice(0, routeSlots)
+    .forEach((group) => addDeal(`Cheapest ${group.key}`, group.best));
+
+  const lengthSlots = Math.max(2, Math.min(4, Math.floor(limit / 3)));
+  groupDeals(priced, (deal) => String(Number(deal.length || 0)))
+    .sort((a, b) => Number(a.key) - Number(b.key) || compareDeals(a.best, b.best))
+    .slice(0, lengthSlots)
+    .forEach((group) => addDeal(`Best ${group.key}-day trip`, group.best));
+
   addDeal("Longest low fare", lowFares.slice().sort((a, b) => (
     Number(b.length || 0) - Number(a.length || 0)
     || Number(a.price || 0) - Number(b.price || 0)
     || String(a.depart || "").localeCompare(String(b.depart || ""))
   ))[0]);
-  addDeal("Shortest", priced.slice().sort((a, b) => Number(a.length || 0) - Number(b.length || 0) || compareDeals(a, b))[0]);
+  addDeal("Shortest trip", priced.slice().sort((a, b) => Number(a.length || 0) - Number(b.length || 0) || compareDeals(a, b))[0]);
   addDeal("Earliest good fare", lowFares.slice().sort((a, b) => String(a.depart || "").localeCompare(String(b.depart || "")) || compareDeals(a, b))[0]);
 
-  priced.slice().sort(compareDeals).forEach((deal) => addDeal("Next cheapest", deal));
-  return selected.slice(0, limit);
+  priced.slice().sort(compareDeals).forEach((deal) => addDeal("Also good", deal));
+  return selected.slice(0, limit).map((deal) => withSamePriceMatches(deal, priced));
+}
+
+function groupDeals(deals, keyFn) {
+  const groups = new Map();
+  deals.forEach((deal) => {
+    const key = String(keyFn(deal) || "").trim();
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(deal);
+  });
+  return [...groups.entries()].map(([key, groupDeals]) => ({
+    key,
+    deals: groupDeals,
+    best: groupDeals.slice().sort(compareDeals)[0],
+  }));
+}
+
+function withSamePriceMatches(deal, priced) {
+  if (!hasPrice(deal.price)) return deal;
+  const key = dealIdentity(deal);
+  const matches = priced
+    .slice()
+    .sort(compareDeals)
+    .filter((match) => Number(match.price) === Number(deal.price) && dealIdentity(match) !== key);
+  if (!matches.length) return deal;
+  return {
+    ...deal,
+    samePriceMatches: matches.slice(0, 4).map((match) => ({
+      route: match.route,
+      origin: match.origin,
+      destination: match.destination,
+      depart: match.depart,
+      returnDate: match.returnDate,
+      length: match.length,
+      stopCount: match.stopCount,
+      maxStops: match.maxStops,
+      airlineName: match.airlineName,
+      airlineCode: match.airlineCode,
+      sourceUrl: match.sourceUrl,
+    })),
+    samePriceTotal: matches.length,
+  };
 }
 
 function dealIdentity(deal) {
@@ -1392,7 +1462,6 @@ function hasPrice(value) {
 
 function render() {
   const count = state.monitors.length;
-  monitorCount.textContent = `${formatInteger(count)} ${count === 1 ? "monitor" : "monitors"}`;
   renderToolbarPriority(count);
   renderLastSweepAt();
   renderMonitors();
@@ -1412,12 +1481,13 @@ function renderToolbarPriority(count) {
 
 function renderLastSweepAt() {
   if (!lastSweepAt) return;
-  lastSweepAt.textContent = state.lastSweepAt ? `Last run ${formatDateTime(state.lastSweepAt)}` : "No sweeps yet";
+  lastSweepAt.textContent = state.lastSweepAt ? `Last found ${formatDateTime(state.lastSweepAt)}` : "No fares yet";
 }
 
 function renderDeal(deal) {
   const template = document.querySelector("#dealTemplate");
   const node = template.content.firstElementChild.cloneNode(true);
+  node.classList.toggle("is-highlighted", deal.dealHighlight === "primary");
   const reason = node.querySelector(".deal-reason");
   if (deal.dealReason) {
     reason.textContent = deal.dealReason;
@@ -1440,7 +1510,41 @@ function renderDeal(deal) {
   }
   node.href = buildGoogleFlightsUrlFromDeal(deal) || deal.sourceUrl || "https://www.google.com/travel/flights";
   node.title = "Open this search on Google Flights";
+  renderSamePriceMatches(node, deal);
   return node;
+}
+
+function renderSamePriceMatches(node, deal) {
+  const list = node.querySelector(".same-price-list");
+  const matches = Array.isArray(deal.samePriceMatches) ? deal.samePriceMatches : [];
+  if (!list || !matches.length || !hasPrice(deal.price)) return;
+  list.hidden = false;
+  list.appendChild(document.createTextNode(`Same ${formatMoney(deal.price)} fare:`));
+  matches.slice(0, 4).forEach((match) => {
+    const link = document.createElement("span");
+    link.className = "same-price-chip";
+    link.setAttribute("role", "link");
+    link.tabIndex = 0;
+    link.textContent = `${match.route || `${match.origin} → ${match.destination}`} · ${formatDate(match.depart)} · ${formatDayCount(match.length)}`;
+    link.title = "Open this matching fare on Google Flights";
+    const openMatch = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const url = buildGoogleFlightsUrlFromDeal(match) || match.sourceUrl;
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    };
+    link.addEventListener("click", openMatch);
+    link.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") openMatch(event);
+    });
+    list.appendChild(link);
+  });
+  if (Number(deal.samePriceTotal || 0) > matches.length) {
+    const more = document.createElement("span");
+    more.className = "same-price-more";
+    more.textContent = `+${formatInteger(Number(deal.samePriceTotal) - matches.length)} more`;
+    list.appendChild(more);
+  }
 }
 
 function formatDealSourceName(deal) {
@@ -1574,18 +1678,18 @@ function renderMonitors() {
   monitorGrid.innerHTML = "";
   if (!state.monitors.length) {
     monitorGrid.innerHTML = `
-      <section class="empty-monitor-hero" aria-label="Create your first monitor">
+      <section class="empty-monitor-hero" aria-label="Create your first trip">
         <div class="empty-hero-copy">
           <p class="eyebrow">Start here</p>
           <h3>Build flexible Google Flights searches without committing to exact dates.</h3>
-          <p>Add one or more airport pairs, choose your travel window, then run a sweep to generate direct searches you can check on Google Flights.</p>
+          <p>Add one or more airport pairs, choose your travel window, then find live fares and direct Google Flights links.</p>
         </div>
         <div class="empty-steps" aria-label="How it works">
           <div><strong>1</strong><span>Add routes</span><small>Pick one or more airport pairs.</small></div>
           <div><strong>2</strong><span>Set dates</span><small>Choose start/end bounds and trip length.</small></div>
-          <div><strong>3</strong><span>Run sweep</span><small>Open direct Google Flights searches.</small></div>
+          <div><strong>3</strong><span>Find fares</span><small>Compare smart fare suggestions.</small></div>
         </div>
-        <button class="primary-button empty-hero-button" type="button">Create monitor</button>
+        <button class="primary-button empty-hero-button" type="button">Create trip</button>
       </section>
     `;
     monitorGrid.querySelector(".empty-hero-button").addEventListener("click", openCreateMonitorOverlay);
@@ -1605,7 +1709,7 @@ function renderMonitors() {
         </div>
         <div class="monitor-header-actions">
           <details class="monitor-menu">
-            <summary aria-label="Monitor actions"><span aria-hidden="true">⋯</span></summary>
+            <summary aria-label="Trip actions"><span aria-hidden="true">⋯</span></summary>
             <div class="monitor-menu-popover">
               <button class="menu-action" type="button" data-action="edit">Edit</button>
               <button class="menu-danger" type="button" data-action="remove">Delete</button>
@@ -1615,12 +1719,12 @@ function renderMonitors() {
       </header>
       <div class="metric-strip">
         <div class="metric"><span>Possible trips</span><strong>${formatInteger(travelWindowCount)}</strong></div>
-        <div class="metric"><span>Latest sweep</span><strong>${monitor.lastRunAt ? formatDateTime(monitor.lastRunAt) : "Not run"}</strong></div>
+        <div class="metric"><span>Latest fares</span><strong>${monitor.lastRunAt ? formatDateTime(monitor.lastRunAt) : "Not found yet"}</strong></div>
       </div>
       <section class="monitor-deals" aria-label="Top results">
         <div class="monitor-deals-heading">
           <h4>Top results</h4>
-          ${monitor.topDeals.length ? "" : "<span>No sweep yet</span>"}
+          ${monitor.topDeals.length ? "" : "<span>No fares yet</span>"}
         </div>
         <div class="deals-list"></div>
       </section>
@@ -1630,7 +1734,7 @@ function renderMonitors() {
     if (monitor.topDeals.length) {
       monitor.topDeals.slice(0, TOP_DEAL_LIMIT).forEach((deal) => dealsList.appendChild(renderDeal(deal)));
     } else {
-      dealsList.innerHTML = `<p class="empty-state">Run a sweep to show this monitor’s top ${TOP_DEAL_LIMIT} Google Flights searches.</p>`;
+      dealsList.innerHTML = `<p class="empty-state">Find fares to show smart Google Flights suggestions for this trip.</p>`;
     }
 
     card.querySelector('[data-action="edit"]').addEventListener("click", () => {
@@ -1659,7 +1763,7 @@ function renderShareImportOverlay() {
 
   const panel = document.createElement("section");
   panel.className = "builder-panel modal-panel share-import-card";
-  panel.setAttribute("aria-label", "Shared monitor import");
+  panel.setAttribute("aria-label", "Shared trip import");
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-modal", "true");
   const hasLocalMonitors = state.monitors.length > 0;
@@ -1667,20 +1771,20 @@ function renderShareImportOverlay() {
     <div class="share-import-header">
       <div>
         <p class="eyebrow">Shared dashboard</p>
-        <h3>${hasLocalMonitors ? "Add shared monitors?" : "Import shared monitors?"}</h3>
+        <h3>${hasLocalMonitors ? "Add shared trips?" : "Import shared trips?"}</h3>
       </div>
-      <span class="status-pill">${formatMonitorCount(pendingShareImportMonitors.length)}</span>
+      <span class="status-pill">${formatTripCount(pendingShareImportMonitors.length)}</span>
     </div>
     <p class="share-import-copy">
       ${hasLocalMonitors
         ? "Choose how this shared setup should join your saved dashboard."
-        : "This link includes a monitor setup you can save locally."}
+        : "This link includes a trip setup you can save locally."}
     </p>
     <div class="share-import-preview"></div>
     <div class="share-import-actions">
       <div class="share-choice">
         <button class="primary-button" type="button" data-share-action="combine">${hasLocalMonitors ? "Combine" : "Import"}</button>
-        <p>${hasLocalMonitors ? "Keep yours and skip duplicates." : "Save these monitors here."}</p>
+        <p>${hasLocalMonitors ? "Keep yours and skip duplicates." : "Save these trips here."}</p>
       </div>
       ${hasLocalMonitors ? `
         <div class="share-choice">
@@ -1707,7 +1811,7 @@ function renderShareImportOverlay() {
   if (pendingShareImportMonitors.length > 5) {
     const more = document.createElement("div");
     more.className = "share-import-row share-import-more";
-    more.textContent = `${formatInteger(pendingShareImportMonitors.length - 5)} more ${pendingShareImportMonitors.length - 5 === 1 ? "monitor" : "monitors"}`;
+    more.textContent = `${formatInteger(pendingShareImportMonitors.length - 5)} more ${pendingShareImportMonitors.length - 5 === 1 ? "trip" : "trips"}`;
     preview.appendChild(more);
   }
   panel.querySelector('[data-share-action="combine"]').addEventListener("click", () => consumeSharedMonitors("combine"));
@@ -1735,8 +1839,8 @@ function countTravelWindows(monitor) {
 
 function removeMonitor(id) {
   const monitor = state.monitors.find((entry) => entry.id === id);
-  const label = monitor ? formatMonitorRoutes(normalizeMonitor(monitor)) : "this monitor";
-  if (!window.confirm(`Delete ${label}? This will remove its saved sweep data.`)) return;
+  const label = monitor ? formatMonitorRoutes(normalizeMonitor(monitor)) : "this trip";
+  if (!window.confirm(`Delete ${label}? This will remove its saved fare results.`)) return;
   if (monitor?.configSignature) delete state.sweepData[monitor.configSignature];
   state.monitors = state.monitors.filter((monitor) => monitor.id !== id);
   saveState();
@@ -1838,8 +1942,8 @@ function formatPairCount(count) {
   return `${count} airport ${count === 1 ? "pair" : "pairs"}`;
 }
 
-function formatMonitorCount(count) {
-  return `${formatInteger(count)} ${count === 1 ? "monitor" : "monitors"}`;
+function formatTripCount(count) {
+  return `${formatInteger(count)} ${count === 1 ? "trip" : "trips"}`;
 }
 
 function formatExcludedAirlines(codes) {

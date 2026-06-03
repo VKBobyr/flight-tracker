@@ -1541,7 +1541,7 @@ function renderMonitors() {
     card.innerHTML = `
       <header>
         <div>
-          ${monitorPairPillsHtml(monitor)}
+          ${monitorRouteTitleHtml(monitor)}
           <div class="monitor-meta">${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatStops(monitor.maxStops)} · ${formatPairCount(monitor.pairs.length)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</div>
         </div>
         <div class="monitor-header-actions">
@@ -1758,13 +1758,19 @@ function formatMonitorRoutes(monitor) {
   return `${pairs[0].origin} → ${pairs[0].destination} + ${pairs.length - 1} more`;
 }
 
-function monitorPairPillsHtml(monitor) {
+function monitorRouteTitleHtml(monitor) {
   const pairs = monitor.pairs || [];
   if (!pairs.length) return `<h3 class="route-title">No airport pairs</h3>`;
   return `
-    <div class="monitor-route-pills" aria-label="Airport pairs">
-      ${pairs.map((pair) => `<span class="route-pill">${pair.origin} → ${pair.destination}</span>`).join("")}
-    </div>
+    <h3 class="monitor-route-title" aria-label="Airport pairs">
+      ${pairs.map((pair) => `
+        <span class="route-token">
+          <span>${pair.origin}</span>
+          <span class="route-arrow" aria-hidden="true">→</span>
+          <span>${pair.destination}</span>
+        </span>
+      `).join("")}
+    </h3>
   `;
 }
 

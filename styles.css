@@ -75,22 +75,22 @@ button:disabled {
 .brand-lockup {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 13px;
   min-width: 0;
 }
 
 .brand-mark {
-  width: clamp(48px, 6vw, 62px);
+  width: clamp(44px, 5.4vw, 56px);
   aspect-ratio: 1;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  border-radius: 17px;
+  border-radius: 16px;
   background: #0a84ff;
   box-shadow:
-    0 16px 34px rgba(10, 93, 207, 0.24),
+    0 14px 30px rgba(10, 93, 207, 0.22),
     var(--hairline);
 }
 
@@ -99,6 +99,12 @@ button:disabled {
   height: 100%;
   display: block;
   object-fit: cover;
+}
+
+.brand-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
 }
 
 .topbar h1,
@@ -111,9 +117,21 @@ button:disabled {
 }
 
 .topbar h1 {
-  font-size: clamp(2.15rem, 5vw, 3.55rem);
-  line-height: 0.98;
-  font-weight: 860;
+  font-family: "Helvetica Neue", Helvetica, Arial, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: clamp(2.18rem, 4.7vw, 3.22rem);
+  line-height: 0.94;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.brand-subtitle {
+  margin: 0;
+  color: color-mix(in srgb, var(--accent-dark) 74%, var(--muted));
+  font-size: clamp(0.66rem, 1.15vw, 0.74rem);
+  font-weight: 720;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+  text-transform: uppercase;
 }
 
 .eyebrow {
@@ -1433,6 +1451,11 @@ button:disabled {
 
   .topbar h1 {
     font-size: clamp(2rem, 13vw, 2.55rem);
+  }
+
+  .brand-subtitle {
+    font-size: 0.62rem;
+    letter-spacing: 0.11em;
   }
 
   .topbar-actions {

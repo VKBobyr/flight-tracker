@@ -359,11 +359,6 @@ function sanitizeSweepData(sweepData) {
 function sanitizeSweepRecord(record) {
   if (!record || typeof record !== "object") return null;
   const topDeals = Array.isArray(record.topDeals) ? record.topDeals.map(normalizeDeal) : [];
-  const hasStaleAirlinePlaceholder = topDeals.some((deal) => (
-    deal.provider === "fli"
-    && normalizeAirlineName(deal.airlineName, deal.airlineCode) === AIRLINE_FALLBACK
-  ));
-  if (hasStaleAirlinePlaceholder) return null;
   return {
     topDeals,
     lastRunAt: record.lastRunAt || null,
@@ -1499,7 +1494,7 @@ function renderFareOptions(node, options, deal) {
     row.title = "Open this trip on Google Flights";
     row.innerHTML = `
       <strong>${option.route || `${option.origin} → ${option.destination}`}</strong>
-      <span>${formatDate(option.depart)}-${formatDate(option.returnDate)} · ${formatDayCount(option.length)} · ${normalizeAirlineName(option.airlineName, option.airlineCode)} · ${formatDealStops(option)}</span>
+      <span>${formatFareOptionMeta(option)}</span>
     `;
     list.appendChild(row);
   });
@@ -1524,10 +1519,22 @@ function formatFareGroupRoute(options, deal) {
 }
 
 function formatFareGroupAirline(options, deal) {
-  const airlines = uniqueValues(options.map((option) => normalizeAirlineName(option.airlineName, option.airlineCode)).filter(Boolean));
+  const airlines = uniqueValues(options.map((option) => knownAirlineName(option.airlineName, option.airlineCode)).filter(Boolean));
   if (airlines.length === 1) return airlines[0];
   if (airlines.length > 1) return `${formatInteger(airlines.length)} airlines`;
-  return normalizeAirlineName(deal.airlineName, deal.airlineCode);
+  const bucketAirline = knownAirlineName(deal.airlineName, deal.airlineCode);
+  if (bucketAirline) return bucketAirline;
+  const count = Math.max(options.length, Number(deal.fareOptionTotal) || 0);
+  return count > 1 ? `${formatInteger(count)} fare options` : "Fare option";
+}
+
+function formatFareOptionMeta(option) {
+  return [
+    `${formatDate(option.depart)}-${formatDate(option.returnDate)}`,
+    formatDayCount(option.length),
+    knownAirlineName(option.airlineName, option.airlineCode),
+    formatDealStops(option),
+  ].filter(Boolean).join(" · ");
 }
 
 function formatFareGroupDepartures(options, deal) {
@@ -1568,6 +1575,12 @@ function normalizeAirlineName(name, code) {
   if (cleanName && cleanName !== "Check Google Flights for airline") return cleanName;
   if (cleanCode) return cleanCode;
   return AIRLINE_FALLBACK;
+}
+
+function knownAirlineName(name, code) {
+  const label = normalizeAirlineName(name, code);
+  if (label === AIRLINE_FALLBACK || label === "Check Google Flights for airline") return "";
+  return label;
 }
 
 function buildGoogleFlightsUrlFromDeal(deal) {

@@ -42,6 +42,7 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent
 MAX_BODY_BYTES = 2 * 1024 * 1024
 TOP_DEAL_LIMIT = 4
+MAX_FARE_OPTIONS_PER_BUCKET = 5
 MAX_FLI_QUERIES_PER_MONITOR = 80
 MAX_PAIRS_PER_MONITOR = 12
 MAX_EXCLUDED_AIRLINES = 24
@@ -319,6 +320,11 @@ def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], 
   excluded = set(monitor["excluded_airlines"])
   max_stops = monitor["max_stops"]
   for deal in deals:
+    if deal.get("fareOptions"):
+      next_deal, used_queries = enrich_fare_bucket_airlines(deal, excluded, max_stops)
+      enriched.append(next_deal)
+      query_count += used_queries
+      continue
     if has_real_airline(deal):
       enriched.append(deal)
       continue
@@ -330,6 +336,44 @@ def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], 
       deal["airlineName"] = best_available_airline_label(deal)
       enriched.append(deal)
   return enriched, query_count
+
+
+def enrich_fare_bucket_airlines(deal: dict, excluded: set[str], max_stops: str) -> tuple[dict, int]:
+  next_deal = dict(deal)
+  options = []
+  query_count = 0
+  for option in (deal.get("fareOptions") or [])[:MAX_FARE_OPTIONS_PER_BUCKET]:
+    next_option = dict(option)
+    if not has_real_airline(next_option):
+      try:
+        next_option, used_query = enrich_single_deal_airline(next_option, excluded, max_stops)
+        query_count += used_query
+      except Exception:
+        next_option["airlineName"] = best_available_airline_label(next_option)
+    options.append(next_option)
+
+  next_deal["fareOptions"] = [compact_related_deal(option) for option in options]
+  apply_fare_bucket_airline_summary(next_deal, options)
+  return next_deal, query_count
+
+
+def apply_fare_bucket_airline_summary(deal: dict, options: list[dict]) -> None:
+  airlines = unique_values([
+    best_available_airline_label(option)
+    for option in options
+    if has_real_airline(option) or option.get("airlineCode")
+  ])
+  airlines = [airline for airline in airlines if airline and airline != AIRLINE_PLACEHOLDER]
+  if len(airlines) == 1:
+    deal["airlineName"] = airlines[0]
+    matching_option = next((option for option in options if best_available_airline_label(option) == airlines[0]), {})
+    deal["airlineCode"] = matching_option.get("airlineCode", "")
+  elif len(airlines) > 1:
+    deal["airlineName"] = f"{len(airlines)} airlines"
+    deal["airlineCode"] = ""
+  else:
+    deal["airlineName"] = ""
+    deal["airlineCode"] = ""
 
 
 def enrich_single_deal_airline(deal: dict, excluded: set[str], max_stops: str) -> tuple[dict, int]:
@@ -569,7 +613,7 @@ def with_deal_reason(deal: dict, reason: str, *, highlight: str = "") -> dict:
 
 def with_fare_options(deal: dict, options: list[dict], reason: str, *, highlight: str = "") -> dict:
   next_deal = with_deal_reason(deal, reason, highlight=highlight)
-  next_deal["fareOptions"] = [compact_related_deal(option) for option in options]
+  next_deal["fareOptions"] = [compact_related_deal(option) for option in options[:MAX_FARE_OPTIONS_PER_BUCKET]]
   next_deal["fareOptionTotal"] = len(options)
   return next_deal
 
@@ -582,6 +626,8 @@ def compact_related_deal(deal: dict) -> dict:
     "depart": deal.get("depart"),
     "returnDate": deal.get("returnDate"),
     "length": deal.get("length"),
+    "price": deal.get("price"),
+    "currency": deal.get("currency", "USD"),
     "stopCount": deal.get("stopCount"),
     "maxStops": deal.get("maxStops"),
     "airlineName": deal.get("airlineName"),

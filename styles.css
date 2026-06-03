@@ -118,8 +118,16 @@ button:disabled {
   font-family: "Helvetica Neue", Helvetica, Arial, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: clamp(2.18rem, 4.7vw, 3.22rem);
   line-height: 0.94;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: -0.01em;
+}
+
+.brand-wordmark-strong {
+  font-weight: 700;
+}
+
+.brand-wordmark-light {
+  font-weight: 400;
 }
 
 .eyebrow {

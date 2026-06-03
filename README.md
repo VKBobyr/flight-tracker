@@ -1,4 +1,4 @@
-# Farely
+# Fareless
 
 An elegant fare dashboard with locally saved monitors, shareable monitor setup links, and live Google Flights pricing through a local Fli-powered sweep endpoint.
 

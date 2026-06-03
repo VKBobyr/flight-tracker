@@ -207,7 +207,7 @@ function loadLocalState() {
       lastSweepAt: storedState?.lastSweepAt,
     });
   } catch (error) {
-    console.warn("Could not load saved Farely state.", error);
+    console.warn("Could not load saved Fareless state.", error);
   }
   return normalizeState({ monitors: [], sweepData: {}, lastSweepAt: null });
 }
@@ -243,7 +243,7 @@ async function hydrateStateFromClientDb() {
     render();
     promptForSharedMonitors();
   } catch (error) {
-    console.warn("Could not load IndexedDB Farely state.", error);
+    console.warn("Could not load IndexedDB Fareless state.", error);
     promptForSharedMonitors();
   }
 }

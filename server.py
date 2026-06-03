@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve Farely locally and provide live priced sweeps through Fli."""
+"""Serve Fareless locally and provide live priced sweeps through Fli."""
 
 from __future__ import annotations
 
@@ -712,7 +712,7 @@ def shared_preview_context(encoded: str | None) -> dict:
     title_routes = ", ".join(route_labels[:2])
     if pair_count > 2:
       title_routes = f"{title_routes} + {pair_count - 2} more"
-    title = f"Farely: {title_routes}"
+    title = f"Fareless: {title_routes}"
     date_summary = summarize_monitor_dates(monitors)
     exclusions = sorted({code for monitor in monitors for code in monitor.get("excludedAirlines", [])})
     stop_rules = sorted({format_stops(monitor.get("maxStops", 0)) for monitor in monitors})
@@ -727,7 +727,7 @@ def shared_preview_context(encoded: str | None) -> dict:
       description_parts.append(stop_rules[0])
     description = " • ".join(part for part in description_parts if part)
   else:
-    title = "Farely"
+    title = "Fareless"
     description = "Build flexible fare monitors and sweep Google Flights for direct date-window searches."
 
   return {
@@ -985,13 +985,13 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-  parser = argparse.ArgumentParser(description="Run Farely with the live fare sweep endpoint.")
+  parser = argparse.ArgumentParser(description="Run Fareless with the live fare sweep endpoint.")
   parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
   parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8001")))
   args = parser.parse_args()
 
   server = ThreadingHTTPServer((args.host, args.port), FlightTrackerHandler)
-  print(f"Farely running at http://{args.host}:{args.port}/")
+  print(f"Fareless running at http://{args.host}:{args.port}/")
   server.serve_forever()
 
 

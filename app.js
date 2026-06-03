@@ -83,6 +83,7 @@ const CLIENT_ID_KEY = "flight-tracker-client-id-v1";
 const MONITOR_URL_PARAM = "m";
 const SWEEP_API_URL = "/api/sweep";
 const TOP_DEAL_LIMIT = 4;
+const FARE_ROWS_PER_PAGE = 10;
 const AIRLINE_FALLBACK = "Airline unavailable";
 const TravelWindowLogic = window.TravelWindows;
 
@@ -1479,7 +1480,7 @@ function renderFareExplorer(monitor, deals) {
 
 function getFareView(monitorId) {
   if (!fareViewState.has(monitorId)) {
-    fareViewState.set(monitorId, { sort: { column: "price", direction: "asc" }, routes: new Set(), lengths: new Set(), airlines: new Set() });
+    fareViewState.set(monitorId, { sort: { column: "price", direction: "asc" }, page: 1, routes: new Set(), lengths: new Set(), airlines: new Set() });
   }
   return fareViewState.get(monitorId);
 }
@@ -1487,6 +1488,7 @@ function getFareView(monitorId) {
 function reconcileFareView(view, entries) {
   if (!view.sort) view.sort = { column: "price", direction: view.priceSort || "asc" };
   delete view.priceSort;
+  view.page = Math.max(1, Math.trunc(Number(view.page) || 1));
   if (!view.routes) view.routes = new Set();
   if (!view.lengths) view.lengths = new Set();
   if (!view.airlines) view.airlines = new Set();
@@ -1543,6 +1545,7 @@ function renderFareControls(monitorId, entries, view, visibleCount) {
       const targetSet = view[input.dataset.filterKind];
       if (input.checked) targetSet.add(input.value);
       else targetSet.delete(input.value);
+      view.page = 1;
       render();
     });
   });
@@ -1553,6 +1556,7 @@ function renderFareControls(monitorId, entries, view, visibleCount) {
   });
   controls.querySelector("[data-fare-reset]").addEventListener("click", () => {
     view.sort = { column: "price", direction: "asc" };
+    view.page = 1;
     view.routes.clear();
     view.lengths.clear();
     view.airlines.clear();
@@ -1651,6 +1655,10 @@ function compareFareEntryTiebreakers(a, b, column) {
 function renderFareTable(monitorId, entries, view) {
   const wrapper = document.createElement("div");
   wrapper.className = "fare-table-card";
+  const totalPages = Math.max(1, Math.ceil(entries.length / FARE_ROWS_PER_PAGE));
+  view.page = Math.min(Math.max(1, Math.trunc(Number(view.page) || 1)), totalPages);
+  const startIndex = (view.page - 1) * FARE_ROWS_PER_PAGE;
+  const pageEntries = entries.slice(startIndex, startIndex + FARE_ROWS_PER_PAGE);
   wrapper.innerHTML = `
     <div class="fare-table-head">
       <span>Trip</span>
@@ -1665,7 +1673,7 @@ function renderFareTable(monitorId, entries, view) {
   `;
   const rows = document.createElement("div");
   rows.className = "fare-table-body";
-  entries.forEach((entry) => rows.appendChild(renderFareTableRow(entry)));
+  pageEntries.forEach((entry) => rows.appendChild(renderFareTableRow(entry)));
   wrapper.appendChild(rows);
   wrapper.querySelectorAll("[data-sort-column]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1674,10 +1682,37 @@ function renderFareTable(monitorId, entries, view) {
       const current = viewState.sort || { column: "price", direction: "asc" };
       const direction = current.column === column && current.direction === "asc" ? "desc" : "asc";
       viewState.sort = { column, direction };
+      viewState.page = 1;
       render();
     });
   });
+  if (entries.length > FARE_ROWS_PER_PAGE) {
+    wrapper.appendChild(renderFarePagination(monitorId, view, entries.length, startIndex, pageEntries.length, totalPages));
+  }
   return wrapper;
+}
+
+function renderFarePagination(monitorId, view, totalRows, startIndex, visibleRows, totalPages) {
+  const pagination = document.createElement("div");
+  pagination.className = "fare-pagination";
+  const firstVisible = startIndex + 1;
+  const lastVisible = startIndex + visibleRows;
+  pagination.innerHTML = `
+    <span>${formatInteger(firstVisible)}-${formatInteger(lastVisible)} of ${formatInteger(totalRows)}</span>
+    <div>
+      <button type="button" data-page-direction="previous" ${view.page <= 1 ? "disabled" : ""}>Previous</button>
+      <span>Page ${formatInteger(view.page)} of ${formatInteger(totalPages)}</span>
+      <button type="button" data-page-direction="next" ${view.page >= totalPages ? "disabled" : ""}>Next</button>
+    </div>
+  `;
+  pagination.querySelectorAll("[data-page-direction]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const viewState = getFareView(monitorId);
+      viewState.page += button.dataset.pageDirection === "next" ? 1 : -1;
+      render();
+    });
+  });
+  return pagination;
 }
 
 function renderSortHeader(column, label, view) {

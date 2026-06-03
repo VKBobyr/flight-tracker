@@ -20,10 +20,7 @@
         </div>
         <div class="topbar-actions">
           <button class="ghost-button toolbar-button" id="shareMonitorsButton" type="button" hidden>Share dashboard</button>
-          <div class="sweep-action-group">
-            <button class="ghost-button toolbar-button" id="runAllButton" type="button" hidden>Run sweep</button>
-            <p class="panel-subtitle sweep-action-status" id="lastSweepAt">Not run yet</p>
-          </div>
+          <button class="ghost-button toolbar-button" id="runAllButton" type="button" hidden>Run sweep</button>
         </div>
       </header>
 
@@ -36,6 +33,7 @@
             </div>
             <div class="section-actions">
               <span class="status-pill" id="monitorCount">0 monitors</span>
+              <span class="status-pill last-run-pill" id="lastSweepAt" hidden>Not run yet</span>
               <button class="ghost-button section-button" id="openCreateMonitorButton" type="button">Create monitor</button>
             </div>
           </div>

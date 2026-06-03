@@ -1302,7 +1302,7 @@ function renderToolbarPriority(count) {
 
 function renderLastSweepAt() {
   if (!lastSweepAt) return;
-  lastSweepAt.textContent = state.lastSweepAt ? `Last run ${formatDateTime(state.lastSweepAt)}` : "Not run yet";
+  lastSweepAt.textContent = state.lastSweepAt ? `Last run ${formatDateTime(state.lastSweepAt)}` : "No sweeps yet";
 }
 
 function renderGlobalDeals() {

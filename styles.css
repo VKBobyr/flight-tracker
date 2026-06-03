@@ -140,17 +140,6 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-.sweep-action-group {
-  display: grid;
-  justify-items: stretch;
-  gap: 4px;
-}
-
-.sweep-action-status {
-  margin: 0;
-  text-align: center;
-}
-
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.78fr);
@@ -320,6 +309,11 @@ button:disabled {
   min-width: 0;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.last-run-pill {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.62);
 }
 
 .section-heading h2 {
@@ -1319,10 +1313,6 @@ button:disabled {
     justify-content: flex-start;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .sweep-action-status {
-    text-align: left;
   }
 
   .toolbar-button,

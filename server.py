@@ -54,7 +54,6 @@ flight_detail_cache: dict[str, dict] = {}
 PUBLIC_STATIC_PATHS = {
   "/",
   "/index.html",
-  "/share-preview.svg",
   "/app.js",
   "/styles.css",
   "/travel-windows.js",
@@ -824,10 +823,7 @@ def index_with_preview_meta(headers, query: dict[str, list[str]]) -> bytes:
   current_url = f"{origin}/"
   if encoded:
     current_url = f"{current_url}?{urlencode({'m': encoded})}"
-  image_url = f"{origin}/share-preview.svg"
-  if encoded:
-    image_url = f"{image_url}?{urlencode({'m': encoded})}"
-  meta = preview_meta_tags(context["title"], context["description"], current_url, image_url)
+  meta = preview_meta_tags(context["title"], context["description"], current_url)
   html_body = (ROOT / "index.html").read_text("utf-8")
   html_body = remove_default_preview_meta(html_body)
   return html_body.replace("<!-- link-preview-meta -->", meta).encode("utf-8")
@@ -844,80 +840,20 @@ def remove_default_preview_meta(html_body: str) -> str:
   return f"{html_body[:start]}{html_body[end:]}"
 
 
-def preview_meta_tags(title: str, description: str, url: str, image_url: str) -> str:
+def preview_meta_tags(title: str, description: str, url: str) -> str:
   values = {
     "title": html.escape(title, quote=True),
     "description": html.escape(description, quote=True),
     "url": html.escape(url, quote=True),
-    "image": html.escape(image_url, quote=True),
   }
   return f"""
     <meta property="og:title" content="{values['title']}">
     <meta property="og:description" content="{values['description']}">
     <meta property="og:url" content="{values['url']}">
-    <meta property="og:image" content="{values['image']}">
-    <meta property="og:image:type" content="image/svg+xml">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="{values['title']}">
     <meta name="twitter:description" content="{values['description']}">
-    <meta name="twitter:image" content="{values['image']}">
     """
-
-
-def preview_svg(query: dict[str, list[str]]) -> bytes:
-  encoded = (query.get("m") or [""])[0]
-  context = shared_preview_context(encoded)
-  title = escape_svg(context["title"])
-  description = escape_svg(context["description"])
-  route_labels = context["route_labels"] or ["Create flexible flight monitors"]
-  rows = []
-  for index, label in enumerate(route_labels[:6]):
-    x = 92 + (index % 2) * 392
-    y = 318 + (index // 2) * 74
-    rows.append(f"""
-      <g>
-        <rect x="{x}" y="{y}" width="340" height="48" rx="24" fill="rgba(255,255,255,0.70)" stroke="rgba(10,132,255,0.22)"/>
-        <text x="{x + 22}" y="{y + 31}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="24" font-weight="760" fill="#101923">{escape_svg(label)}</text>
-      </g>
-    """)
-  if context["more_routes"]:
-    rows.append(f"""
-      <text x="92" y="560" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="24" font-weight="700" fill="#5c718d">+ {context['more_routes']} more airport {plural(context['more_routes'], 'pair')}</text>
-    """)
-  svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-    <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#f8fbff"/>
-        <stop offset="46%" stop-color="#eaf4ff"/>
-        <stop offset="100%" stop-color="#eef7ff"/>
-      </linearGradient>
-      <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#075cff"/>
-        <stop offset="58%" stop-color="#0aa7ff"/>
-        <stop offset="100%" stop-color="#7767ff"/>
-      </linearGradient>
-      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#173d70" flood-opacity="0.14"/>
-      </filter>
-    </defs>
-    <rect width="1200" height="630" fill="url(#bg)"/>
-    <circle cx="1030" cy="98" r="210" fill="#0aa7ff" opacity="0.12"/>
-    <circle cx="124" cy="560" r="240" fill="#7767ff" opacity="0.10"/>
-    <rect x="64" y="62" width="112" height="112" rx="31" fill="url(#logo)" filter="url(#shadow)"/>
-    <path d="M92 128 C122 126 142 106 153 86 C158 78 171 78 174 86 C181 103 154 135 128 144 C113 151 95 149 84 139 C80 135 84 128 92 128Z" fill="#fff"/>
-    <path d="M80 142 C112 160 152 156 184 136" fill="none" stroke="#fff" stroke-opacity="0.56" stroke-width="16" stroke-linecap="round"/>
-    <text x="202" y="96" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="820" letter-spacing="4" fill="#075ccf">FARELY</text>
-    <text x="202" y="152" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="48" font-weight="850" fill="#101923">{title}</text>
-    <text x="70" y="244" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="31" font-weight="650" fill="#5c718d">{description}</text>
-    <rect x="64" y="286" width="820" height="280" rx="36" fill="rgba(255,255,255,0.46)" stroke="rgba(255,255,255,0.74)" filter="url(#shadow)"/>
-    {''.join(rows)}
-  </svg>"""
-  return svg.encode("utf-8")
-
-
-def escape_svg(value: object) -> str:
-  return html.escape(str(value or ""), quote=True)
 
 
 class FlightTrackerHandler(SimpleHTTPRequestHandler):
@@ -931,11 +867,6 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
       return self.dynamic_bytes(
         index_with_preview_meta(self.headers, query),
         "text/html; charset=utf-8",
-      )
-    if parsed.path == "/share-preview.svg":
-      return self.dynamic_bytes(
-        preview_svg(query),
-        "image/svg+xml; charset=utf-8",
       )
     if not self.is_public_static_path():
       self.send_error(HTTPStatus.NOT_FOUND)

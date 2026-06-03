@@ -80,7 +80,7 @@
               <div class="airport-grid">
                 <label class="field airport-field search-field">
                   <span>From</span>
-                  <input id="originInput" type="text" placeholder="Airport, city, or code" aria-describedby="originSelected">
+                  <input id="originInput" type="text" placeholder="Airport, city, or code" aria-describedby="originSelected" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="search">
                   <input id="originCode" type="hidden">
                   <small id="originSelected">No airport selected</small>
                   <div class="suggestions" id="originSuggestions" role="listbox"></div>
@@ -88,17 +88,14 @@
 
                 <label class="field airport-field search-field">
                   <span>To</span>
-                  <input id="destinationInput" type="text" placeholder="Airport, city, or code" aria-describedby="destinationSelected">
+                  <input id="destinationInput" type="text" placeholder="Airport, city, or code" aria-describedby="destinationSelected" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="search">
                   <input id="destinationCode" type="hidden">
                   <small id="destinationSelected">No airport selected</small>
                   <div class="suggestions" id="destinationSuggestions" role="listbox"></div>
                 </label>
-              </div>
 
-              <div class="pair-actions action-row">
-                <button class="tertiary-button" id="addPairButton" type="button">
+                <button class="icon-button pair-add-button" id="addPairButton" type="button" aria-label="Add airport pair">
                   <span aria-hidden="true">+</span>
-                  Add airport pair
                 </button>
               </div>
               <div class="pair-list" id="pairList" aria-live="polite"></div>
@@ -147,7 +144,7 @@
               <div class="airline-filter">
                 <label class="field airline-field search-field">
                   <span>Exclude airlines</span>
-                  <input id="airlineInput" type="text" placeholder="Airline or code" aria-describedby="airlineSelected">
+                  <input id="airlineInput" type="text" placeholder="Airline or code" aria-describedby="airlineSelected" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="search">
                   <input id="airlineCode" type="hidden">
                   <small id="airlineSelected">No airline selected</small>
                   <div class="suggestions" id="airlineSuggestions" role="listbox"></div>

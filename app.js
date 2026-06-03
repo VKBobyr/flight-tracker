@@ -150,6 +150,11 @@ bindAirportSearch(destinationInput, destinationCode, destinationSelected, destin
 bindAirlineSearch(airlineInput, airlineCode, airlineSelected, airlineSuggestions);
 
 form.addEventListener("submit", saveMonitorFromForm);
+form.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && event.target instanceof HTMLInputElement && !event.defaultPrevented) {
+    event.preventDefault();
+  }
+});
 shareMonitorsButton.addEventListener("click", shareMonitors);
 openCreateMonitorButton.addEventListener("click", openCreateMonitorOverlay);
 closeCreateMonitorButton.addEventListener("click", closeCreateMonitorOverlay);
@@ -613,23 +618,35 @@ function initializeDates() {
 }
 
 function bindAirportSearch(input, codeField, selectedText, menu) {
-  input.addEventListener("input", () => {
-    codeField.value = "";
-    selectedText.textContent = "No airport selected";
-    renderSuggestions(input.value, menu, (airport) => {
-      input.value = `${airport.code} - ${airport.city}`;
-      codeField.value = airport.code;
-      selectedText.textContent = `${airport.name}, ${airport.city}, ${airport.country}`;
-      menu.classList.remove("is-open");
-    });
-  });
-
-  input.addEventListener("focus", () => renderSuggestions(input.value, menu, (airport) => {
+  const selectAirport = (airport) => {
     input.value = `${airport.code} - ${airport.city}`;
     codeField.value = airport.code;
     selectedText.textContent = `${airport.name}, ${airport.city}, ${airport.country}`;
     menu.classList.remove("is-open");
-  }));
+  };
+
+  input.addEventListener("input", () => {
+    codeField.value = "";
+    selectedText.textContent = "No airport selected";
+    renderSuggestions(input.value, menu, selectAirport);
+  });
+
+  input.addEventListener("focus", () => renderSuggestions(input.value, menu, selectAirport));
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const topMatch = findAirports(input.value)[0];
+    if (topMatch) selectAirport(topMatch);
+    if (input === originInput) {
+      destinationInput.focus();
+      return;
+    }
+    if (originCode.value && destinationCode.value) {
+      addDraftPair();
+    }
+    originInput.focus();
+  });
 
   document.addEventListener("click", (event) => {
     if (!menu.contains(event.target) && event.target !== input) {
@@ -652,6 +669,16 @@ function bindAirlineSearch(input, codeField, selectedText, menu) {
     setAirline(airline);
     menu.classList.remove("is-open");
   }));
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const topMatch = findAirlines(input.value)[0];
+    if (topMatch) setAirline(topMatch);
+    if (airlineCode.value || topMatch) {
+      addDraftExcludedAirline();
+    }
+  });
 
   document.addEventListener("click", (event) => {
     if (!menu.contains(event.target) && event.target !== input) {
@@ -1487,7 +1514,7 @@ function renderMonitors() {
     card.innerHTML = `
       <header>
         <div>
-          <h3 class="route-title">${formatMonitorRoutes(monitor)}</h3>
+          ${monitorPairPillsHtml(monitor)}
           <div class="monitor-meta">${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatPairCount(monitor.pairs.length)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</div>
         </div>
         <div class="monitor-header-actions">
@@ -1702,6 +1729,16 @@ function formatMonitorRoutes(monitor) {
     return pairs.map((pair) => `${pair.origin} → ${pair.destination}`).join(", ");
   }
   return `${pairs[0].origin} → ${pairs[0].destination} + ${pairs.length - 1} more`;
+}
+
+function monitorPairPillsHtml(monitor) {
+  const pairs = monitor.pairs || [];
+  if (!pairs.length) return `<h3 class="route-title">No airport pairs</h3>`;
+  return `
+    <div class="monitor-route-pills" aria-label="Airport pairs">
+      ${pairs.map((pair) => `<span class="route-pill">${pair.origin} → ${pair.destination}</span>`).join("")}
+    </div>
+  `;
 }
 
 function formatPairCount(count) {

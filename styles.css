@@ -378,6 +378,10 @@ button:disabled {
   align-items: start;
 }
 
+.airport-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 46px;
+}
+
 .field {
   position: relative;
   min-width: 0;
@@ -618,9 +622,22 @@ button:disabled {
   background: rgba(255, 255, 255, 0.58);
 }
 
-.pair-actions {
-  justify-content: flex-start;
-  margin-top: -2px;
+.pair-add-button {
+  align-self: end;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 21px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.pair-add-button span {
+  border: 0;
+  width: auto;
+  height: auto;
+  font-size: 1.25rem;
+  font-weight: 850;
+  line-height: 1;
 }
 
 .pair-list {
@@ -1181,6 +1198,27 @@ button:disabled {
   font-weight: 860;
 }
 
+.monitor-route-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+
+.route-pill {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(10, 132, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(10, 132, 255, 0.08);
+  color: var(--ink);
+  padding: 0 10px;
+  font-size: 0.88rem;
+  font-weight: 860;
+  white-space: nowrap;
+}
+
 .monitor-meta {
   color: var(--muted);
   font-size: 0.82rem;
@@ -1378,6 +1416,18 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .airport-grid {
+    grid-template-columns: minmax(0, 1fr) 46px;
+  }
+
+  .airport-grid .airport-field:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .pair-add-button {
+    margin-bottom: 21px;
+  }
+
   .airline-filter .tertiary-button {
     width: 100%;
     margin-top: 0;
@@ -1408,7 +1458,7 @@ button:disabled {
 
   .trip-rule {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     align-items: center;
   }
@@ -1419,14 +1469,14 @@ button:disabled {
     grid-template-columns: 36px minmax(0, 1fr) 36px;
   }
 
-  .trip-rule > span:last-of-type {
-    grid-column: 1 / 2;
-    justify-self: start;
+  .trip-rule > span {
+    justify-self: center;
+    white-space: nowrap;
   }
 
   .max-length-button {
     width: 100%;
-    grid-column: 2 / -1;
+    grid-column: 1 / -1;
   }
 
   .form-actions {

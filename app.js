@@ -92,6 +92,7 @@ let pendingClientDbSave = Promise.resolve();
 let sharedImportPrompted = false;
 let activeSharedMonitors = [];
 let pendingShareImportMonitors = [];
+let editingMonitorId = null;
 const draftPairs = [];
 const draftExcludedAirlines = [];
 
@@ -117,6 +118,9 @@ const shareMonitorsButton = document.querySelector("#shareMonitorsButton");
 const openCreateMonitorButton = document.querySelector("#openCreateMonitorButton");
 const closeCreateMonitorButton = document.querySelector("#closeCreateMonitorButton");
 const createMonitorOverlay = document.querySelector("#createMonitorOverlay");
+const builderEyebrow = document.querySelector("#builderEyebrow");
+const builderTitle = document.querySelector("#builderTitle");
+const monitorSubmitButton = document.querySelector("#monitorSubmitButton");
 const resetButton = document.querySelector("#resetButton");
 const addPairButton = document.querySelector("#addPairButton");
 const pairList = document.querySelector("#pairList");
@@ -145,7 +149,7 @@ bindAirportSearch(originInput, originCode, originSelected, originSuggestions);
 bindAirportSearch(destinationInput, destinationCode, destinationSelected, destinationSuggestions);
 bindAirlineSearch(airlineInput, airlineCode, airlineSelected, airlineSuggestions);
 
-form.addEventListener("submit", addMonitor);
+form.addEventListener("submit", saveMonitorFromForm);
 shareMonitorsButton.addEventListener("click", shareMonitors);
 openCreateMonitorButton.addEventListener("click", openCreateMonitorOverlay);
 closeCreateMonitorButton.addEventListener("click", closeCreateMonitorOverlay);
@@ -168,17 +172,7 @@ document.addEventListener("click", (event) => {
 });
 resetButton.addEventListener("click", () => {
   setTimeout(() => {
-    originCode.value = "";
-    destinationCode.value = "";
-    originSelected.textContent = "No airport selected";
-    destinationSelected.textContent = "No airport selected";
-    draftPairs.length = 0;
-    draftExcludedAirlines.length = 0;
-    clearCurrentAirline();
-    renderDraftPairs();
-    renderDraftExcludedAirlines();
-    initializeDates();
-    clampTripLengthsToDateBounds();
+    resetMonitorForm();
   }, 0);
 });
 addPairButton.addEventListener("click", addDraftPair);
@@ -785,30 +779,74 @@ function isSubsequence(needle, haystack) {
   return false;
 }
 
-function addMonitor(event) {
+function saveMonitorFromForm(event) {
   event.preventDefault();
-  const monitor = readMonitorForm();
-  if (!monitor) return;
+  const formMonitor = readMonitorForm();
+  if (!formMonitor) return;
+
+  if (editingMonitorId) {
+    const index = state.monitors.findIndex((monitor) => monitor.id === editingMonitorId);
+    if (index < 0) {
+      showToast("That monitor is no longer available.");
+      closeCreateMonitorOverlay();
+      return;
+    }
+    const existing = normalizeMonitor(state.monitors[index]);
+    const previousSignature = existing.configSignature;
+    const nextMonitor = normalizeMonitor({
+      ...existing,
+      ...formMonitor,
+      id: existing.id,
+      createdAt: existing.createdAt,
+    });
+    if (previousSignature !== nextMonitor.configSignature) {
+      delete state.sweepData[previousSignature];
+      nextMonitor.lastRunAt = null;
+      nextMonitor.topDeals = [];
+      nextMonitor.combinationCount = undefined;
+    }
+    state.monitors[index] = nextMonitor;
+    state.lastGlobalDeals = computeGlobalDeals();
+    saveState();
+    render();
+    closeCreateMonitorOverlay();
+    showToast(`Updated ${formatMonitorRoutes(nextMonitor)}.`);
+    return;
+  }
+
+  const monitor = normalizeMonitor({
+    ...formMonitor,
+    id: makeId(),
+    createdAt: new Date().toISOString(),
+    lastRunAt: null,
+    history: [],
+    topDeals: [],
+  });
   state.monitors.unshift(monitor);
   saveState();
   render();
-  form.reset();
-  originCode.value = "";
-  destinationCode.value = "";
-  originSelected.textContent = "No airport selected";
-  destinationSelected.textContent = "No airport selected";
-  draftPairs.length = 0;
-  draftExcludedAirlines.length = 0;
-  clearCurrentAirline();
-  renderDraftPairs();
-  renderDraftExcludedAirlines();
-  initializeDates();
-  clampTripLengthsToDateBounds();
+  resetMonitorForm();
   closeCreateMonitorOverlay();
   showToast(`Monitoring ${formatPairCount(monitor.pairs.length)}.`);
 }
 
 function openCreateMonitorOverlay() {
+  editingMonitorId = null;
+  setMonitorOverlayMode("create");
+  resetMonitorForm();
+  createMonitorOverlay.hidden = false;
+  createMonitorOverlay.classList.add("is-open");
+  createMonitorOverlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  originInput.focus({ preventScroll: true });
+}
+
+function openEditMonitorOverlay(id) {
+  const monitor = state.monitors.find((entry) => entry.id === id);
+  if (!monitor) return;
+  editingMonitorId = id;
+  setMonitorOverlayMode("edit");
+  fillMonitorForm(normalizeMonitor(monitor));
   createMonitorOverlay.hidden = false;
   createMonitorOverlay.classList.add("is-open");
   createMonitorOverlay.setAttribute("aria-hidden", "false");
@@ -821,7 +859,46 @@ function closeCreateMonitorOverlay() {
   createMonitorOverlay.setAttribute("aria-hidden", "true");
   createMonitorOverlay.hidden = true;
   document.body.classList.remove("modal-open");
+  editingMonitorId = null;
+  setMonitorOverlayMode("create");
   openCreateMonitorButton.focus();
+}
+
+function setMonitorOverlayMode(mode) {
+  const isEdit = mode === "edit";
+  builderEyebrow.textContent = isEdit ? "Edit monitor" : "Create monitor";
+  builderTitle.textContent = isEdit ? "Update route and dates" : "Route and dates";
+  monitorSubmitButton.textContent = isEdit ? "Save changes" : "Add monitor";
+  closeCreateMonitorButton.setAttribute("aria-label", isEdit ? "Close edit monitor" : "Close create monitor");
+}
+
+function resetMonitorForm() {
+  form.reset();
+  clearCurrentPair();
+  clearCurrentAirline();
+  draftPairs.length = 0;
+  draftExcludedAirlines.length = 0;
+  renderDraftPairs();
+  renderDraftExcludedAirlines();
+  initializeDates();
+  clampTripLengthsToDateBounds();
+}
+
+function fillMonitorForm(monitor) {
+  form.reset();
+  clearCurrentPair();
+  clearCurrentAirline();
+  draftPairs.length = 0;
+  draftPairs.push(...(monitor.pairs || []).map((pair) => ({ origin: pair.origin, destination: pair.destination })));
+  draftExcludedAirlines.length = 0;
+  draftExcludedAirlines.push(...(monitor.excludedAirlines || []));
+  startFromInput.value = monitor.startFrom;
+  startToInput.value = monitor.startTo;
+  tripMinInput.value = monitor.tripMin;
+  tripMaxInput.value = monitor.tripMax;
+  renderDraftPairs();
+  renderDraftExcludedAirlines();
+  clampTripLengthsToDateBounds();
 }
 
 function readMonitorForm() {
@@ -847,17 +924,12 @@ function readMonitorForm() {
   }
 
   return {
-    id: makeId(),
     pairs,
     startFrom,
     startTo,
     tripMin,
     tripMax,
     excludedAirlines,
-    createdAt: new Date().toISOString(),
-    lastRunAt: null,
-    history: [],
-    topDeals: [],
   };
 }
 
@@ -1420,8 +1492,9 @@ function renderMonitors() {
         </div>
         <div class="monitor-header-actions">
           <details class="monitor-menu">
-            <summary aria-label="Monitor actions">…</summary>
+            <summary aria-label="Monitor actions"><span aria-hidden="true">⋯</span></summary>
             <div class="monitor-menu-popover">
+              <button class="menu-action" type="button" data-action="edit">Edit</button>
               <button class="menu-danger" type="button" data-action="remove">Delete</button>
             </div>
           </details>
@@ -1447,6 +1520,10 @@ function renderMonitors() {
       dealsList.innerHTML = `<p class="empty-state">Run a sweep to show this monitor’s top ${TOP_DEAL_LIMIT} Google Flights searches.</p>`;
     }
 
+    card.querySelector('[data-action="edit"]').addEventListener("click", () => {
+      closeOpenMonitorMenus();
+      openEditMonitorOverlay(monitor.id);
+    });
     card.querySelector('[data-action="remove"]').addEventListener("click", () => removeMonitor(monitor.id));
     monitorGrid.appendChild(card);
   });

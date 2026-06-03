@@ -1105,18 +1105,24 @@ button:disabled {
 .monitor-menu summary {
   width: 34px;
   height: 34px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.52);
   color: var(--muted);
-  font-size: 1.32rem;
-  font-weight: 850;
-  line-height: 0;
+  font-size: 1.28rem;
+  font-weight: 760;
+  line-height: 1;
   list-style: none;
   cursor: pointer;
   box-shadow: var(--hairline);
+}
+
+.monitor-menu summary span {
+  display: block;
+  transform: translateY(-1px);
 }
 
 .monitor-menu summary::-webkit-details-marker {
@@ -1144,16 +1150,29 @@ button:disabled {
   -webkit-backdrop-filter: blur(18px) saturate(1.16);
 }
 
+.menu-action,
 .menu-danger {
   width: 100%;
   min-height: 34px;
   border: 0;
   border-radius: calc(var(--radius) - 3px);
   background: transparent;
-  color: var(--danger);
   padding: 0 10px;
   text-align: left;
-  font-weight: 820;
+  font-weight: 680;
+}
+
+.menu-action {
+  color: var(--ink);
+}
+
+.menu-danger {
+  color: var(--danger);
+}
+
+.menu-action:hover,
+.menu-action:focus {
+  background: rgba(10, 132, 255, 0.09);
 }
 
 .menu-danger:hover,

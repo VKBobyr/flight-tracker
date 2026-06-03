@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import html
+import io
 import json
 import os
 import time
@@ -11,7 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 try:
   from fli.core import build_date_search_segments, build_flight_segments
@@ -44,6 +47,7 @@ rate_limit_hits: dict[str, list[float]] = {}
 PUBLIC_STATIC_PATHS = {
   "/",
   "/index.html",
+  "/share-preview.svg",
   "/app.js",
   "/styles.css",
   "/travel-windows.js",
@@ -445,11 +449,272 @@ def prune_rate_limit_hits(cutoff: float) -> None:
       del rate_limit_hits[key]
 
 
+def request_origin(headers) -> str:
+  protocol = headers.get("X-Forwarded-Proto") or "http"
+  host = headers.get("Host") or "127.0.0.1:8001"
+  return f"{protocol}://{host}"
+
+
+def shared_preview_context(encoded: str | None) -> dict:
+  monitors = decode_shared_monitors(encoded)
+  monitor_count = len(monitors)
+  pairs = [pair for monitor in monitors for pair in monitor.get("pairs", [])]
+  pair_count = len(pairs)
+  route_labels = [format_route(pair) for pair in pairs[:8]]
+  more_routes = max(0, pair_count - len(route_labels))
+
+  if monitor_count:
+    title_routes = ", ".join(route_labels[:2])
+    if pair_count > 2:
+      title_routes = f"{title_routes} + {pair_count - 2} more"
+    title = f"Flight Tracker: {title_routes}"
+    date_summary = summarize_monitor_dates(monitors)
+    exclusions = sorted({code for monitor in monitors for code in monitor.get("excludedAirlines", [])})
+    description_parts = [
+      f"{monitor_count} {plural(monitor_count, 'monitor')}",
+      f"{pair_count} airport {plural(pair_count, 'pair')}",
+      date_summary,
+    ]
+    if exclusions:
+      description_parts.append(f"{len(exclusions)} airline {plural(len(exclusions), 'exclusion')}")
+    description = " • ".join(part for part in description_parts if part)
+  else:
+    title = "Flight Tracker"
+    description = "Build flexible flight monitors and sweep Google Flights for direct date-window searches."
+
+  return {
+    "monitors": monitors,
+    "monitor_count": monitor_count,
+    "pair_count": pair_count,
+    "route_labels": route_labels,
+    "more_routes": more_routes,
+    "title": title,
+    "description": description,
+  }
+
+
+def decode_shared_monitors(encoded: str | None) -> list[dict]:
+  if not encoded:
+    return []
+  try:
+    payload = json.loads(base64.urlsafe_b64decode(pad_base64(encoded)).decode("utf-8"))
+  except Exception:
+    return []
+  return normalize_share_payload(payload)
+
+
+def pad_base64(value: str) -> bytes:
+  clean = "".join(character for character in str(value) if character.isalnum() or character in "-_")
+  clean += "=" * (-len(clean) % 4)
+  return clean.encode("ascii")
+
+
+def normalize_share_payload(payload: object) -> list[dict]:
+  if not isinstance(payload, dict):
+    return []
+  raw_monitors = payload.get("monitors") or payload.get("m") or []
+  monitors = []
+  for raw_monitor in raw_monitors:
+    monitor = monitor_from_share_value(raw_monitor)
+    if monitor.get("pairs"):
+      monitors.append(monitor)
+  return monitors[:20]
+
+
+def monitor_from_share_value(value: object) -> dict:
+  if isinstance(value, list):
+    pair_values = value[0] if len(value) > 0 else []
+    pairs = [
+      {"origin": clean_iata(pair[0] if len(pair) > 0 else ""), "destination": clean_iata(pair[1] if len(pair) > 1 else "")}
+      for pair in pair_values
+      if isinstance(pair, list)
+    ]
+    monitor = {
+      "pairs": [pair for pair in pairs if pair["origin"] and pair["destination"] and pair["origin"] != pair["destination"]],
+      "startFrom": value[1] if len(value) > 1 else "",
+      "startTo": value[2] if len(value) > 2 else "",
+      "tripMin": value[3] if len(value) > 3 else 0,
+      "tripMax": value[4] if len(value) > 4 else 0,
+      "excludedAirlines": [clean_airline_code(code) for code in (value[5] if len(value) > 5 and isinstance(value[5], list) else [])],
+    }
+  elif isinstance(value, dict):
+    monitor = {
+      "pairs": [
+        {"origin": clean_iata(pair.get("origin")), "destination": clean_iata(pair.get("destination"))}
+        for pair in value.get("pairs", [])
+        if isinstance(pair, dict)
+      ],
+      "startFrom": value.get("startFrom", ""),
+      "startTo": value.get("startTo", ""),
+      "tripMin": value.get("tripMin", 0),
+      "tripMax": value.get("tripMax", 0),
+      "excludedAirlines": [clean_airline_code(code) for code in value.get("excludedAirlines", [])],
+    }
+  else:
+    return {"pairs": []}
+
+  monitor["pairs"] = unique_pair_dicts(monitor["pairs"])
+  monitor["excludedAirlines"] = sorted({code for code in monitor["excludedAirlines"] if code})
+  return monitor
+
+
+def unique_pair_dicts(pairs: list[dict]) -> list[dict]:
+  seen = set()
+  output = []
+  for pair in pairs:
+    key = (pair.get("origin"), pair.get("destination"))
+    if not key[0] or not key[1] or key in seen:
+      continue
+    seen.add(key)
+    output.append(pair)
+  return output
+
+
+def summarize_monitor_dates(monitors: list[dict]) -> str:
+  if not monitors:
+    return ""
+  starts = [parse_safe_date(monitor.get("startFrom")) for monitor in monitors]
+  ends = [parse_safe_date(monitor.get("startTo")) for monitor in monitors]
+  starts = [value for value in starts if value]
+  ends = [value for value in ends if value]
+  days = [(safe_int(monitor.get("tripMin")), safe_int(monitor.get("tripMax"))) for monitor in monitors]
+  if not starts or not ends:
+    return ""
+  min_days = min(day[0] for day in days)
+  max_days = max(day[1] for day in days)
+  return f"{format_short_date(min(starts))}-{format_short_date(max(ends))} • {min_days}-{max_days} days"
+
+
+def parse_safe_date(value: object) -> date | None:
+  try:
+    return date.fromisoformat(str(value))
+  except Exception:
+    return None
+
+
+def safe_int(value: object) -> int:
+  try:
+    return max(0, int(float(value)))
+  except Exception:
+    return 0
+
+
+def format_short_date(value: date) -> str:
+  return value.strftime("%b %-d") if os.name != "nt" else value.strftime("%b %#d")
+
+
+def plural(count: int, singular: str) -> str:
+  return singular if count == 1 else f"{singular}s"
+
+
+def index_with_preview_meta(headers, query: dict[str, list[str]]) -> bytes:
+  encoded = (query.get("m") or [""])[0]
+  context = shared_preview_context(encoded)
+  origin = request_origin(headers)
+  current_url = f"{origin}/"
+  if encoded:
+    current_url = f"{current_url}?{urlencode({'m': encoded})}"
+  image_url = f"{origin}/share-preview.svg"
+  if encoded:
+    image_url = f"{image_url}?{urlencode({'m': encoded})}"
+  meta = preview_meta_tags(context["title"], context["description"], current_url, image_url)
+  html_body = (ROOT / "index.html").read_text("utf-8")
+  return html_body.replace("<!-- link-preview-meta -->", meta).encode("utf-8")
+
+
+def preview_meta_tags(title: str, description: str, url: str, image_url: str) -> str:
+  values = {
+    "title": html.escape(title, quote=True),
+    "description": html.escape(description, quote=True),
+    "url": html.escape(url, quote=True),
+    "image": html.escape(image_url, quote=True),
+  }
+  return f"""
+    <meta property="og:title" content="{values['title']}">
+    <meta property="og:description" content="{values['description']}">
+    <meta property="og:url" content="{values['url']}">
+    <meta property="og:image" content="{values['image']}">
+    <meta property="og:image:type" content="image/svg+xml">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:title" content="{values['title']}">
+    <meta name="twitter:description" content="{values['description']}">
+    <meta name="twitter:image" content="{values['image']}">
+    """
+
+
+def preview_svg(query: dict[str, list[str]]) -> bytes:
+  encoded = (query.get("m") or [""])[0]
+  context = shared_preview_context(encoded)
+  title = escape_svg(context["title"])
+  description = escape_svg(context["description"])
+  route_labels = context["route_labels"] or ["Create flexible flight monitors"]
+  rows = []
+  for index, label in enumerate(route_labels[:6]):
+    x = 92 + (index % 2) * 392
+    y = 318 + (index // 2) * 74
+    rows.append(f"""
+      <g>
+        <rect x="{x}" y="{y}" width="340" height="48" rx="24" fill="rgba(255,255,255,0.70)" stroke="rgba(10,132,255,0.22)"/>
+        <text x="{x + 22}" y="{y + 31}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="24" font-weight="760" fill="#101923">{escape_svg(label)}</text>
+      </g>
+    """)
+  if context["more_routes"]:
+    rows.append(f"""
+      <text x="92" y="560" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="24" font-weight="700" fill="#5c718d">+ {context['more_routes']} more airport {plural(context['more_routes'], 'pair')}</text>
+    """)
+  svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#f8fbff"/>
+        <stop offset="46%" stop-color="#eaf4ff"/>
+        <stop offset="100%" stop-color="#eef7ff"/>
+      </linearGradient>
+      <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#075cff"/>
+        <stop offset="58%" stop-color="#0aa7ff"/>
+        <stop offset="100%" stop-color="#7767ff"/>
+      </linearGradient>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#173d70" flood-opacity="0.14"/>
+      </filter>
+    </defs>
+    <rect width="1200" height="630" fill="url(#bg)"/>
+    <circle cx="1030" cy="98" r="210" fill="#0aa7ff" opacity="0.12"/>
+    <circle cx="124" cy="560" r="240" fill="#7767ff" opacity="0.10"/>
+    <rect x="64" y="62" width="112" height="112" rx="31" fill="url(#logo)" filter="url(#shadow)"/>
+    <path d="M92 128 C122 126 142 106 153 86 C158 78 171 78 174 86 C181 103 154 135 128 144 C113 151 95 149 84 139 C80 135 84 128 92 128Z" fill="#fff"/>
+    <path d="M80 142 C112 160 152 156 184 136" fill="none" stroke="#fff" stroke-opacity="0.56" stroke-width="16" stroke-linecap="round"/>
+    <text x="202" y="96" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="820" letter-spacing="4" fill="#075ccf">FLIGHT TRACKER</text>
+    <text x="202" y="152" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="48" font-weight="850" fill="#101923">{title}</text>
+    <text x="70" y="244" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="31" font-weight="650" fill="#5c718d">{description}</text>
+    <rect x="64" y="286" width="820" height="280" rx="36" fill="rgba(255,255,255,0.46)" stroke="rgba(255,255,255,0.74)" filter="url(#shadow)"/>
+    {''.join(rows)}
+  </svg>"""
+  return svg.encode("utf-8")
+
+
+def escape_svg(value: object) -> str:
+  return html.escape(str(value or ""), quote=True)
+
+
 class FlightTrackerHandler(SimpleHTTPRequestHandler):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, directory=str(ROOT), **kwargs)
 
   def send_head(self):
+    parsed = urlparse(self.path)
+    query = parse_qs(parsed.query)
+    if parsed.path in ("/", "/index.html"):
+      return self.dynamic_bytes(
+        index_with_preview_meta(self.headers, query),
+        "text/html; charset=utf-8",
+      )
+    if parsed.path == "/share-preview.svg":
+      return self.dynamic_bytes(
+        preview_svg(query),
+        "image/svg+xml; charset=utf-8",
+      )
     if not self.is_public_static_path():
       self.send_error(HTTPStatus.NOT_FOUND)
       return None
@@ -486,6 +751,14 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
   def is_public_static_path(self) -> bool:
     path = unquote(urlparse(self.path).path)
     return path in PUBLIC_STATIC_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_STATIC_PREFIXES)
+
+  def dynamic_bytes(self, body: bytes, content_type: str):
+    self.send_response(HTTPStatus.OK)
+    self.send_header("Content-Type", content_type)
+    self.send_header("Cache-Control", "public, max-age=300")
+    self.send_header("Content-Length", str(len(body)))
+    self.end_headers()
+    return io.BytesIO(body)
 
   def send_json(self, value: dict, status: HTTPStatus = HTTPStatus.OK, headers: dict[str, str] | None = None) -> None:
     body = json.dumps(value).encode("utf-8")

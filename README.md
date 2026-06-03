@@ -56,13 +56,13 @@ Those settings keep the service inexpensive and limit abuse while the app is sti
 
 If you deploy from a prebuilt container instead of source, build and push this repository's `Dockerfile`, then deploy the image with the same Cloud Run limits.
 
-The server also rate-limits live sweeps in memory. Defaults are 12 sweeps per browser client per hour and 30 sweeps per IP per hour. Tune them with:
+The server caches live sweep results for matching monitor setups before applying rate limits, and also caches each route/date/duration provider query so small monitor edits can reuse recent results. Defaults are 6 hours of cached fare results, 12 uncached sweeps per browser client per hour, and 30 uncached sweeps per IP per hour. Tune them with:
 
 ```sh
 gcloud run services update flight-tracker \
   --region us-central1 \
   --project flight-tracker-2606022310 \
-  --set-env-vars MAX_SWEEPS_PER_CLIENT_WINDOW=12,MAX_SWEEPS_PER_IP_WINDOW=30,RATE_WINDOW_SECONDS=3600
+  --set-env-vars SWEEP_CACHE_TTL_SECONDS=21600,MAX_SWEEPS_PER_CLIENT_WINDOW=12,MAX_SWEEPS_PER_IP_WINDOW=30,RATE_WINDOW_SECONDS=3600
 ```
 
 ## Data source

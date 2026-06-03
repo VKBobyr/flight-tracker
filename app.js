@@ -1126,11 +1126,11 @@ async function runSweepForAll(manual) {
   const monitors = state.monitors.slice();
   startSweepProgress(monitors.length);
   try {
-    await Promise.all(monitors.map(async (monitor) => {
+    for (const monitor of monitors) {
       updateSweepProgress(`Checking ${formatMonitorRoutes(normalizeMonitor(monitor))}`);
       await runSweep(monitor.id, manual, { deferRender: true });
       completeSweepProgressStep();
-    }));
+    }
 
     state.lastGlobalDeals = computeGlobalDeals();
     state.lastSweepAt = new Date().toISOString();
@@ -1161,6 +1161,9 @@ async function runSweep(monitorId, manual, options = {}) {
   updateSweepStorageForMonitor(monitor);
   if (sweep.provider === "client") {
     showToast("Live pricing is unavailable here. Showing Google Flights searches instead.");
+  }
+  if (sweep.cacheStatus === "hit") {
+    showToast("Reused recent fare results for this monitor.");
   }
   if (Array.isArray(sweep.providerErrors) && sweep.providerErrors.length) {
     showToast(`${formatInteger(sweep.providerErrors.length)} live fare ${sweep.providerErrors.length === 1 ? "search" : "searches"} returned partial data.`);

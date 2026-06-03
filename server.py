@@ -40,10 +40,14 @@ ROOT = Path(__file__).resolve().parent
 MAX_BODY_BYTES = 2 * 1024 * 1024
 TOP_DEAL_LIMIT = 5
 MAX_FLI_QUERIES_PER_MONITOR = 80
+SWEEP_CACHE_TTL_SECONDS = int(os.environ.get("SWEEP_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
 RATE_WINDOW_SECONDS = int(os.environ.get("RATE_WINDOW_SECONDS", "3600"))
 MAX_SWEEPS_PER_CLIENT_WINDOW = int(os.environ.get("MAX_SWEEPS_PER_CLIENT_WINDOW", "12"))
 MAX_SWEEPS_PER_IP_WINDOW = int(os.environ.get("MAX_SWEEPS_PER_IP_WINDOW", "30"))
 rate_limit_hits: dict[str, list[float]] = {}
+sweep_cache: dict[str, dict] = {}
+search_query_cache: dict[str, dict] = {}
+flight_detail_cache: dict[str, dict] = {}
 PUBLIC_STATIC_PATHS = {
   "/",
   "/index.html",
@@ -77,6 +81,12 @@ def sweep_monitor(monitor: dict) -> dict:
     raise RuntimeError("Live fare lookup requires the `flights` package. Run `.venv/bin/python server.py --port 8001` or install it with `python -m pip install flights`.")
 
   normalized = normalize_monitor(monitor)
+  cache_key = sweep_cache_key(normalized)
+  cached = read_cache(sweep_cache, cache_key)
+  if cached:
+    cached["cacheStatus"] = "hit"
+    return cached
+
   candidates: list[dict] = []
   provider_errors: list[str] = []
   query_count = 0
@@ -100,19 +110,23 @@ def sweep_monitor(monitor: dict) -> dict:
     raise RuntimeError("; ".join(provider_errors[:3]))
 
   candidates.sort(key=deal_sort_key)
-  top_deals = enrich_deal_airlines(candidates[:TOP_DEAL_LIMIT], normalized)
+  top_deals, enrichment_queries = enrich_deal_airlines(candidates[:TOP_DEAL_LIMIT], normalized)
   prices = [deal["price"] for deal in candidates if isinstance(deal.get("price"), (int, float))]
   average_price = round(sum(prices) / len(prices), 2) if prices else 0
 
-  return {
+  result = {
     "provider": "fli",
     "ranAt": datetime.now(timezone.utc).isoformat(),
     "averagePrice": average_price,
     "topDeals": top_deals,
     "candidateCount": len(candidates),
     "combinationCount": normalized["combination_count"],
+    "liveQueryCount": query_count + enrichment_queries,
+    "cacheStatus": "miss",
     "providerErrors": provider_errors[:6],
   }
+  write_cache(sweep_cache, cache_key, result, SWEEP_CACHE_TTL_SECONDS)
+  return result
 
 
 def normalize_monitor(monitor: dict) -> dict:
@@ -159,6 +173,11 @@ def normalize_monitor(monitor: dict) -> dict:
 
 
 def search_flexible_dates(pair: dict, monitor: dict, duration: int) -> tuple[list[dict], int]:
+  cache_key = search_query_cache_key(pair, monitor, duration, "dates")
+  cached = read_cache(search_query_cache, cache_key)
+  if cached is not None:
+    return cached, 0
+
   origin = resolve_airport(pair["origin"])
   destination = resolve_airport(pair["destination"])
   segments, trip_type = build_date_search_segments(
@@ -180,14 +199,21 @@ def search_flexible_dates(pair: dict, monitor: dict, duration: int) -> tuple[lis
     duration=duration,
   )
   results = SearchDates().search(filters, currency="USD", language="en-US", country="US") or []
-  return [
+  deals = [
     deal_from_date_price(pair, result)
     for result in results
     if date_price_matches(result, monitor, duration)
-  ], 1
+  ]
+  write_cache(search_query_cache, cache_key, deals, SWEEP_CACHE_TTL_SECONDS)
+  return deals, 1
 
 
 def search_same_day_flights(pair: dict, monitor: dict) -> tuple[list[dict], int]:
+  cache_key = search_query_cache_key(pair, monitor, 0, "same-day")
+  cached = read_cache(search_query_cache, cache_key)
+  if cached is not None:
+    return cached, 0
+
   deals = []
   query_count = 0
   excluded = set(monitor["excluded_airlines"])
@@ -216,6 +242,7 @@ def search_same_day_flights(pair: dict, monitor: dict) -> tuple[list[dict], int]
       for deal in (flight_result_to_deal(pair, result, depart.isoformat(), depart.isoformat(), excluded) for result in results)
       if deal
     )
+  write_cache(search_query_cache, cache_key, deals, SWEEP_CACHE_TTL_SECONDS)
   return deals, query_count
 
 
@@ -268,22 +295,31 @@ def flight_result_to_deal(pair: dict, result: object, depart: str, return_date: 
   }
 
 
-def enrich_deal_airlines(deals: list[dict], monitor: dict) -> list[dict]:
+def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], int]:
   enriched = []
+  query_count = 0
   excluded = set(monitor["excluded_airlines"])
   for deal in deals:
     if deal.get("airlineName"):
       enriched.append(deal)
       continue
     try:
-      enriched.append(enrich_single_deal_airline(deal, excluded))
+      next_deal, used_query = enrich_single_deal_airline(deal, excluded)
+      enriched.append(next_deal)
+      query_count += used_query
     except Exception:
       deal["airlineName"] = "Check Google Flights for airline"
       enriched.append(deal)
-  return enriched
+  return enriched, query_count
 
 
-def enrich_single_deal_airline(deal: dict, excluded: set[str]) -> dict:
+def enrich_single_deal_airline(deal: dict, excluded: set[str]) -> tuple[dict, int]:
+  cache_key = flight_detail_cache_key(deal, excluded)
+  cached = read_cache(flight_detail_cache, cache_key)
+  if cached:
+    deal.update(cached)
+    return deal, 0
+
   origin = resolve_airport(deal["origin"])
   destination = resolve_airport(deal["destination"])
   segments, trip_type = build_flight_segments(
@@ -314,7 +350,13 @@ def enrich_single_deal_airline(deal: dict, excluded: set[str]) -> dict:
     deal["airlineName"] = best.get("airlineName") or "Check Google Flights for airline"
   else:
     deal["airlineName"] = "Check Google Flights for airline"
-  return deal
+  write_cache(
+    flight_detail_cache,
+    cache_key,
+    {"airlineCode": deal.get("airlineCode", ""), "airlineName": deal.get("airlineName", "")},
+    SWEEP_CACHE_TTL_SECONDS,
+  )
+  return deal, 1
 
 
 def collect_airlines(flight: object, airline_codes: list[str], airline_names: list[str]) -> None:
@@ -415,6 +457,67 @@ def short_error(error: Exception) -> str:
 def google_flights_url(origin: str, destination: str, depart: str, return_date: str) -> str:
   query = quote(f"{origin} to {destination} {depart} {return_date}")
   return f"https://www.google.com/travel/flights/search?q={query}&hl=en-US&gl=US&curr=USD"
+
+
+def cached_sweep_for_monitor(monitor: dict) -> dict | None:
+  try:
+    normalized = normalize_monitor(monitor)
+  except Exception:
+    return None
+  cached = read_cache(sweep_cache, sweep_cache_key(normalized))
+  if cached:
+    cached["cacheStatus"] = "hit"
+  return cached
+
+
+def sweep_cache_key(normalized: dict) -> str:
+  return json.dumps({
+    "pairs": sorted(normalized["pairs"], key=lambda pair: (pair["origin"], pair["destination"])),
+    "start_from": normalized["start_from"],
+    "start_to": normalized["start_to"],
+    "trip_min": normalized["trip_min"],
+    "trip_max": normalized["trip_max"],
+    "excluded_airlines": sorted(normalized["excluded_airlines"]),
+  }, sort_keys=True, separators=(",", ":"))
+
+
+def flight_detail_cache_key(deal: dict, excluded: set[str]) -> str:
+  return json.dumps({
+    "origin": deal.get("origin"),
+    "destination": deal.get("destination"),
+    "depart": deal.get("depart"),
+    "returnDate": deal.get("returnDate"),
+    "excluded": sorted(excluded),
+  }, sort_keys=True, separators=(",", ":"))
+
+
+def search_query_cache_key(pair: dict, monitor: dict, duration: int, search_type: str) -> str:
+  return json.dumps({
+    "type": search_type,
+    "origin": pair.get("origin"),
+    "destination": pair.get("destination"),
+    "start_from": monitor.get("start_from"),
+    "start_to": monitor.get("start_to"),
+    "duration": duration,
+    "excluded_airlines": sorted(monitor.get("excluded_airlines") or []),
+  }, sort_keys=True, separators=(",", ":"))
+
+
+def read_cache(cache: dict[str, dict], key: str) -> dict | None:
+  record = cache.get(key)
+  if not record:
+    return None
+  if record["expires_at"] <= time.time():
+    del cache[key]
+    return None
+  return json.loads(json.dumps(record["value"]))
+
+
+def write_cache(cache: dict[str, dict], key: str, value: dict, ttl_seconds: int) -> None:
+  cache[key] = {
+    "expires_at": time.time() + ttl_seconds,
+    "value": json.loads(json.dumps(value)),
+  }
 
 
 def check_rate_limit(client_id: str, ip_address: str) -> tuple[bool, int]:
@@ -737,6 +840,16 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
       self.send_error(HTTPStatus.NOT_FOUND)
       return
     try:
+      content_length = int(self.headers.get("Content-Length", "0"))
+      if content_length > MAX_BODY_BYTES:
+        self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        return
+      payload = json.loads(self.rfile.read(content_length) or b"{}")
+      monitor = payload.get("monitor") or {}
+      cached = cached_sweep_for_monitor(monitor)
+      if cached:
+        self.send_json(cached)
+        return
       allowed, retry_after = check_rate_limit(self.client_id(), self.client_address[0])
       if not allowed:
         self.send_json(
@@ -745,12 +858,7 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
           headers={"Retry-After": str(retry_after)},
         )
         return
-      content_length = int(self.headers.get("Content-Length", "0"))
-      if content_length > MAX_BODY_BYTES:
-        self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
-        return
-      payload = json.loads(self.rfile.read(content_length) or b"{}")
-      result = sweep_monitor(payload.get("monitor") or {})
+      result = sweep_monitor(monitor)
       self.send_json(result)
     except Exception as error:
       self.send_error(HTTPStatus.BAD_GATEWAY, short_error(error))

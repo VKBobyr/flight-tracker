@@ -169,7 +169,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && pendingShareImportMonitors.length) {
     dismissSharedImport();
   }
-  if (event.key === "Escape") closeOpenMonitorMenus();
+  if (event.key === "Escape") {
+    closeOpenMonitorMenus();
+    closeOpenFareFilters();
+  }
 });
 document.addEventListener("click", (event) => {
   document.querySelectorAll(".monitor-menu[open]").forEach((menu) => {
@@ -1530,6 +1533,11 @@ function renderFareControls(monitorId, entries, view, visibleCount) {
       render();
     });
   });
+  controls.querySelectorAll(".fare-filter").forEach((filter) => {
+    filter.addEventListener("toggle", () => {
+      if (filter.open) closeOtherFareFilters(filter);
+    });
+  });
   controls.querySelector("[data-fare-reset]").addEventListener("click", () => {
     view.priceSort = "asc";
     view.lengths.clear();
@@ -1541,8 +1549,18 @@ function renderFareControls(monitorId, entries, view, visibleCount) {
 
 function closeFareFiltersOnOutsideClick(event) {
   if (event.target.closest(".fare-filter")) return;
+  closeOpenFareFilters();
+}
+
+function closeOpenFareFilters() {
   document.querySelectorAll(".fare-filter[open]").forEach((filter) => {
     filter.open = false;
+  });
+}
+
+function closeOtherFareFilters(activeFilter) {
+  document.querySelectorAll(".fare-filter[open]").forEach((filter) => {
+    if (filter !== activeFilter) filter.open = false;
   });
 }
 

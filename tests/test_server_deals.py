@@ -56,7 +56,7 @@ class DealCurationTests(unittest.TestCase):
     self.assertEqual([option["route"] for option in curated[0]["fareOptions"]], ["SFO → SEA", "SJC → SEA"])
     self.assertEqual(curated[0]["fareOptions"][0]["price"], 100)
 
-  def test_fare_bucket_caps_visible_options_but_keeps_total(self):
+  def test_fare_bucket_keeps_all_options_for_selected_price(self):
     candidates = [
       deal("SFO-SEA", 100, f"2026-07-{day:02d}", day)
       for day in range(1, 9)
@@ -65,7 +65,7 @@ class DealCurationTests(unittest.TestCase):
     curated = server.curate_top_deals(candidates, 4)
 
     self.assertEqual(curated[0]["fareOptionTotal"], 8)
-    self.assertEqual(len(curated[0]["fareOptions"]), server.MAX_FARE_OPTIONS_PER_BUCKET)
+    self.assertEqual(len(curated[0]["fareOptions"]), 8)
 
   def test_fare_bucket_airline_summary_ignores_placeholder(self):
     bucket = {}

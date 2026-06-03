@@ -42,7 +42,7 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent
 MAX_BODY_BYTES = 2 * 1024 * 1024
 TOP_DEAL_LIMIT = 4
-MAX_FARE_OPTIONS_PER_BUCKET = 5
+MAX_ENRICHED_FARE_OPTIONS_PER_BUCKET = 5
 MAX_FLI_QUERIES_PER_MONITOR = 80
 MAX_PAIRS_PER_MONITOR = 12
 MAX_EXCLUDED_AIRLINES = 24
@@ -342,9 +342,9 @@ def enrich_fare_bucket_airlines(deal: dict, excluded: set[str], max_stops: str) 
   next_deal = dict(deal)
   options = []
   query_count = 0
-  for option in (deal.get("fareOptions") or [])[:MAX_FARE_OPTIONS_PER_BUCKET]:
+  for index, option in enumerate(deal.get("fareOptions") or []):
     next_option = dict(option)
-    if not has_real_airline(next_option):
+    if index < MAX_ENRICHED_FARE_OPTIONS_PER_BUCKET and not has_real_airline(next_option):
       try:
         next_option, used_query = enrich_single_deal_airline(next_option, excluded, max_stops)
         query_count += used_query
@@ -613,7 +613,7 @@ def with_deal_reason(deal: dict, reason: str, *, highlight: str = "") -> dict:
 
 def with_fare_options(deal: dict, options: list[dict], reason: str, *, highlight: str = "") -> dict:
   next_deal = with_deal_reason(deal, reason, highlight=highlight)
-  next_deal["fareOptions"] = [compact_related_deal(option) for option in options[:MAX_FARE_OPTIONS_PER_BUCKET]]
+  next_deal["fareOptions"] = [compact_related_deal(option) for option in options]
   next_deal["fareOptionTotal"] = len(options)
   return next_deal
 

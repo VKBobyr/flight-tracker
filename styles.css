@@ -853,13 +853,285 @@ button:disabled {
 }
 
 .deals-list {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  display: block;
+  min-width: 0;
 }
 
 .deals-list > .empty-state {
   grid-column: 1 / -1;
+}
+
+.fare-explorer {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.fare-controls {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fare-count {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(10, 132, 255, 0.16);
+  border-radius: 999px;
+  padding: 0 11px;
+  background: rgba(10, 132, 255, 0.08);
+  color: var(--accent-dark);
+  font-size: 0.74rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.fare-sort-pill,
+.fare-filter summary,
+.fare-reset {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(90, 112, 126, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--ink);
+  padding: 0 11px;
+  font-size: 0.74rem;
+  font-weight: 720;
+  box-shadow: var(--hairline);
+}
+
+.fare-sort-pill span,
+.fare-filter summary span {
+  color: var(--muted);
+  font-weight: 720;
+}
+
+.fare-sort-pill select {
+  min-width: 84px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 760;
+  outline: 0;
+}
+
+.fare-filter {
+  position: relative;
+}
+
+.fare-filter summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.fare-filter summary::-webkit-details-marker {
+  display: none;
+}
+
+.fare-filter summary::after {
+  content: "⌄";
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.fare-filter summary strong {
+  color: var(--ink);
+  font-weight: 760;
+}
+
+.fare-filter-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  z-index: 10;
+  min-width: min(260px, calc(100vw - 48px));
+  max-height: 280px;
+  overflow: auto;
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(90, 112, 126, 0.18);
+  border-radius: var(--radius);
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 42px rgba(23, 61, 112, 0.18), var(--hairline);
+  backdrop-filter: blur(18px);
+}
+
+.fare-filter-menu label {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 10px;
+  padding: 0 8px;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.fare-filter-menu label:hover {
+  background: rgba(10, 132, 255, 0.08);
+}
+
+.fare-filter-menu input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent-dark);
+}
+
+.fare-reset {
+  cursor: pointer;
+}
+
+.fare-reset:hover,
+.fare-reset:focus-visible {
+  border-color: rgba(10, 132, 255, 0.28);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.fare-table {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.fare-price-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(10, 132, 255, 0.18);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow: 0 8px 20px rgba(23, 61, 112, 0.07), var(--hairline);
+}
+
+.fare-price-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border-bottom: 1px solid rgba(90, 112, 126, 0.14);
+  background: linear-gradient(135deg, rgba(10, 132, 255, 0.09), rgba(255, 255, 255, 0.4));
+}
+
+.fare-price-group > header div {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.fare-price-group > header span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(10, 132, 255, 0.22);
+  border-radius: 999px;
+  padding: 0 8px;
+  color: var(--accent-dark);
+  background: rgba(10, 132, 255, 0.09);
+  font-size: 0.68rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.fare-price-group:first-child > header span {
+  color: #fff;
+  border-color: rgba(10, 132, 255, 0.2);
+  background: linear-gradient(135deg, #1267e8, #1696f2 54%, #6f68f2);
+}
+
+.fare-price-group > header strong {
+  color: var(--accent-dark);
+  font-size: 1.3rem;
+  font-weight: 880;
+  font-variant-numeric: tabular-nums;
+}
+
+.fare-price-group > header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.fare-table-head,
+.fare-table-row {
+  display: grid;
+  grid-template-columns: minmax(92px, 1.1fr) minmax(132px, 1.35fr) minmax(118px, 1fr) minmax(70px, 0.7fr) minmax(86px, auto);
+  gap: 12px;
+  align-items: center;
+}
+
+.fare-table-head {
+  padding: 8px 13px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 820;
+  text-transform: uppercase;
+}
+
+.fare-table-body {
+  display: grid;
+}
+
+.fare-table-row {
+  min-width: 0;
+  padding: 10px 13px;
+  border-top: 1px solid rgba(90, 112, 126, 0.09);
+  color: inherit;
+  text-decoration: none;
+  transition: background 160ms ease;
+}
+
+.fare-table-row:hover,
+.fare-table-row:focus-visible {
+  background: rgba(10, 132, 255, 0.07);
+  outline: none;
+}
+
+.fare-table-row strong {
+  color: var(--accent-dark);
+  font-size: 0.86rem;
+  font-weight: 840;
+  white-space: nowrap;
+}
+
+.fare-table-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 720;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fare-table-row em {
+  justify-self: end;
+  color: var(--accent-dark);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 820;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fare-table-row em::after {
+  content: " ↗";
 }
 
 .sweep-progress {
@@ -1685,21 +1957,79 @@ button:disabled {
     gap: 3px;
   }
 
-  .deal-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
+  .fare-controls {
+    align-items: stretch;
   }
 
-  .deal-row::after {
+  .fare-count,
+  .fare-sort-pill,
+  .fare-filter,
+  .fare-filter summary,
+  .fare-reset {
+    width: 100%;
+  }
+
+  .fare-sort-pill {
+    justify-content: space-between;
+  }
+
+  .fare-sort-pill select {
+    text-align: right;
+  }
+
+  .fare-filter-menu {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    max-height: 220px;
+    margin-top: 7px;
+  }
+
+  .fare-price-group > header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .fare-price-group > header p {
+    white-space: normal;
+  }
+
+  .fare-table-head {
     display: none;
   }
 
-  .deal-value {
-    grid-auto-flow: column;
-    align-items: center;
-    justify-content: space-between;
-    justify-items: start;
-    width: 100%;
+  .fare-table-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 10px;
+    padding: 11px 12px;
+  }
+
+  .fare-table-row strong {
+    grid-column: 1 / 2;
+  }
+
+  .fare-table-row span {
+    white-space: normal;
+  }
+
+  .fare-table-row span:nth-of-type(1),
+  .fare-table-row span:nth-of-type(2) {
+    grid-column: 1 / 2;
+  }
+
+  .fare-table-row span:nth-of-type(3) {
+    grid-column: 2 / 3;
+    grid-row: 1 / 2;
+    justify-self: end;
+    white-space: nowrap;
+  }
+
+  .fare-table-row em {
+    grid-column: 2 / 3;
+    grid-row: 2 / 4;
+    align-self: end;
+    justify-self: end;
   }
 
   .builder-panel,

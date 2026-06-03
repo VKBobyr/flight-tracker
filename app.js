@@ -1919,7 +1919,15 @@ function renderMonitors() {
       </div>
       <section class="monitor-deals" aria-label="Top results">
         <div class="monitor-deals-heading">
-          <h4>Top results</h4>
+          <div class="results-title">
+            <h4>Top results</h4>
+            <span class="results-help">
+              <button type="button" aria-label="How top results are picked">?</button>
+              <span class="results-help-popover" role="tooltip">
+                Fareless checks your possible trips, then shows trips from the four lowest prices it found. If many trips have higher prices, they stay hidden so the table stays focused on the best fare levels.
+              </span>
+            </span>
+          </div>
           ${monitor.topDeals.length ? "" : "<span>No fares yet</span>"}
         </div>
         <div class="deals-list"></div>

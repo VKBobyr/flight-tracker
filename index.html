@@ -14,7 +14,7 @@
     <meta name="twitter:title" content="Fareless">
     <meta name="twitter:description" content="Build flexible trips and find Google Flights fares across date windows.">
     <!-- default-link-preview-meta-end -->
-    <link rel="stylesheet" href="styles.css?v=2026-06-03-fare-shimmer">
+    <link rel="stylesheet" href="styles.css?v=2026-06-03-trip-filters">
   </head>
   <body>
     <div class="app-shell">
@@ -118,6 +118,20 @@
 
               <fieldset class="trip-length-panel">
                 <legend>Trip length</legend>
+                <div class="segmented-control trip-length-mode" aria-label="Trip length mode">
+                  <label>
+                    <input type="radio" name="tripLengthMode" value="any">
+                    <span>Any</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="tripLengthMode" value="exact">
+                    <span>Exact</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="tripLengthMode" value="range" checked>
+                    <span>Range</span>
+                  </label>
+                </div>
                 <div class="trip-rule">
                   <div class="stepper compact-stepper">
                     <button class="stepper-button" type="button" data-step-target="tripMin" data-step="-1" aria-label="Decrease minimum trip length">−</button>
@@ -133,6 +147,7 @@
                   <span>days</span>
                   <button class="max-length-button" id="maxTripLengthButton" type="button">Max</button>
                 </div>
+                <p class="trip-any-note">Fareless will check every possible trip length inside the date window.</p>
               </fieldset>
 
               <label class="field">
@@ -146,14 +161,24 @@
               </label>
             </section>
 
-            <section class="form-section" aria-label="Exclusions">
+            <section class="form-section" aria-label="Airline filters">
               <div class="form-section-heading">
-                <h3>Exclusions</h3>
-                <span id="airlineCount">0 excluded</span>
+                <h3>Airlines</h3>
+                <span id="airlineCount">0 selected</span>
+              </div>
+              <div class="segmented-control airline-mode" aria-label="Airline filter mode">
+                <label>
+                  <input type="radio" name="airlineMode" value="exclude" checked>
+                  <span>Exclude</span>
+                </label>
+                <label>
+                  <input type="radio" name="airlineMode" value="include">
+                  <span>Only these</span>
+                </label>
               </div>
               <div class="airline-filter">
                 <label class="field airline-field search-field">
-                  <span>Exclude airlines</span>
+                  <span id="airlineFieldLabel">Exclude airlines</span>
                   <input id="airlineInput" type="text" placeholder="Airline or code" aria-describedby="airlineSelected" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="search">
                   <input id="airlineCode" type="hidden">
                   <small id="airlineSelected">No airline selected</small>
@@ -161,7 +186,7 @@
                 </label>
                 <button class="tertiary-button" id="addAirlineButton" type="button">
                   <span aria-hidden="true">+</span>
-                  Exclude airline
+                  Add airline
                 </button>
               </div>
               <div class="pair-list" id="airlineList" aria-live="polite"></div>
@@ -178,6 +203,6 @@
     </div>
 
     <script src="travel-windows.js?v=2026-06-02-window-tests-2"></script>
-    <script src="app.js?v=2026-06-03-fare-shimmer"></script>
+    <script src="app.js?v=2026-06-03-trip-filters"></script>
   </body>
 </html>

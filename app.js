@@ -133,6 +133,9 @@ const airlineSuggestions = document.querySelector("#airlineSuggestions");
 const addAirlineButton = document.querySelector("#addAirlineButton");
 const airlineList = document.querySelector("#airlineList");
 const airlineCount = document.querySelector("#airlineCount");
+const airlineFieldLabel = document.querySelector("#airlineFieldLabel");
+const airlineModeInputs = document.querySelectorAll('input[name="airlineMode"]');
+const tripLengthModeInputs = document.querySelectorAll('input[name="tripLengthMode"]');
 const tripMinInput = document.querySelector("#tripMin");
 const tripMaxInput = document.querySelector("#tripMax");
 const maxStopsInput = document.querySelector("#maxStops");
@@ -191,15 +194,18 @@ addPairButton.addEventListener("click", addDraftPair);
 addAirlineButton.addEventListener("click", addDraftExcludedAirline);
 stepperButtons.forEach((button) => button.addEventListener("click", handleStepperClick));
 maxTripLengthButton.addEventListener("click", setTripMaxToDateBounds);
-tripMinInput.addEventListener("input", clampTripLengthsToDateBounds);
+tripMinInput.addEventListener("input", updateTripLengthModeUi);
 tripMaxInput.addEventListener("input", clampTripLengthsToDateBounds);
-startFromInput.addEventListener("change", clampTripLengthsToDateBounds);
-startToInput.addEventListener("change", clampTripLengthsToDateBounds);
+startFromInput.addEventListener("change", updateTripLengthModeUi);
+startToInput.addEventListener("change", updateTripLengthModeUi);
+tripLengthModeInputs.forEach((input) => input.addEventListener("change", updateTripLengthModeUi));
+airlineModeInputs.forEach((input) => input.addEventListener("change", renderDraftExcludedAirlines));
 runAllButton.addEventListener("click", () => runSweepForAll(true));
 
 renderDraftPairs();
 renderDraftExcludedAirlines();
 clampTripLengthsToDateBounds();
+updateTripLengthModeUi();
 render();
 setTimeout(promptForSharedMonitors, 0);
 hydrateStateFromClientDb();
@@ -379,6 +385,7 @@ function monitorConfigSignature(monitor) {
     ...config,
     pairs: config.pairs.slice().sort((a, b) => `${a.origin}-${a.destination}`.localeCompare(`${b.origin}-${b.destination}`)),
     excludedAirlines: config.excludedAirlines.slice().sort(),
+    airlineMode: config.airlineMode,
     maxStops: config.maxStops,
   });
 }
@@ -398,6 +405,7 @@ function normalizeMonitorShape(monitor) {
   monitor.excludedAirlines = Array.isArray(monitor.excludedAirlines)
     ? uniqueValues(monitor.excludedAirlines.map((code) => String(code || "").trim().toUpperCase()))
     : [];
+  monitor.airlineMode = normalizeAirlineMode(monitor.airlineMode);
   monitor.startFrom = coerceDateInput(monitor.startFrom, TravelWindowLogic.toDateInput(TravelWindowLogic.addDays(new Date(), 30)));
   monitor.startTo = coerceDateInput(monitor.startTo, TravelWindowLogic.toDateInput(TravelWindowLogic.addDays(new Date(), 90)));
   if (new Date(`${monitor.startFrom}T00:00:00`) > new Date(`${monitor.startTo}T00:00:00`)) {
@@ -476,6 +484,7 @@ function shareableMonitorConfig(monitor) {
     tripMax: monitor.tripMax,
     maxStops: monitor.maxStops,
     excludedAirlines: monitor.excludedAirlines,
+    airlineMode: normalizeAirlineMode(monitor.airlineMode),
   };
 }
 
@@ -490,6 +499,7 @@ function sharePayloadFromMonitors(monitors) {
       monitor.tripMax,
       monitor.maxStops,
       monitor.excludedAirlines,
+      normalizeAirlineMode(monitor.airlineMode),
     ]),
   };
 }
@@ -497,9 +507,10 @@ function sharePayloadFromMonitors(monitors) {
 function monitorsFromSharePayload(payload) {
   if (Array.isArray(payload?.monitors)) return payload.monitors;
   if (payload?.v !== 2 || !Array.isArray(payload.m)) return null;
-  return payload.m.map(([pairs, startFrom, startTo, tripMin, tripMax, sixth, seventh]) => {
+  return payload.m.map(([pairs, startFrom, startTo, tripMin, tripMax, sixth, seventh, eighth]) => {
     const hasMaxStops = !Array.isArray(sixth);
     const excludedAirlines = hasMaxStops ? seventh : sixth;
+    const airlineMode = hasMaxStops ? eighth : "exclude";
     return {
       pairs: Array.isArray(pairs)
         ? pairs.map(([origin, destination]) => ({ origin, destination }))
@@ -510,6 +521,7 @@ function monitorsFromSharePayload(payload) {
       tripMax,
       maxStops: hasMaxStops ? sixth : "0",
       excludedAirlines: Array.isArray(excludedAirlines) ? excludedAirlines : [],
+      airlineMode: normalizeAirlineMode(airlineMode),
     };
   });
 }
@@ -846,7 +858,7 @@ function isSubsequence(needle, haystack) {
   return false;
 }
 
-function saveMonitorFromForm(event) {
+async function saveMonitorFromForm(event) {
   event.preventDefault();
   const formMonitor = readMonitorForm();
   if (!formMonitor) return;
@@ -877,6 +889,9 @@ function saveMonitorFromForm(event) {
     render();
     closeCreateMonitorOverlay();
     showToast(`Updated ${formatMonitorRoutes(nextMonitor)}.`);
+    if (previousSignature !== nextMonitor.configSignature) {
+      await runSweepForMonitor(nextMonitor.id);
+    }
     return;
   }
 
@@ -893,7 +908,7 @@ function saveMonitorFromForm(event) {
   render();
   resetMonitorForm();
   closeCreateMonitorOverlay();
-    showToast(`Added ${formatPairCount(monitor.pairs.length)}.`);
+  showToast(`Added ${formatPairCount(monitor.pairs.length)}.`);
 }
 
 function openCreateMonitorOverlay() {
@@ -940,6 +955,8 @@ function setMonitorOverlayMode(mode) {
 
 function resetMonitorForm() {
   form.reset();
+  setCheckedRadio(tripLengthModeInputs, "range");
+  setCheckedRadio(airlineModeInputs, "exclude");
   clearCurrentPair();
   clearCurrentAirline();
   draftPairs.length = 0;
@@ -948,6 +965,7 @@ function resetMonitorForm() {
   renderDraftExcludedAirlines();
   initializeDates();
   clampTripLengthsToDateBounds();
+  updateTripLengthModeUi();
 }
 
 function fillMonitorForm(monitor) {
@@ -958,14 +976,17 @@ function fillMonitorForm(monitor) {
   draftPairs.push(...(monitor.pairs || []).map((pair) => ({ origin: pair.origin, destination: pair.destination })));
   draftExcludedAirlines.length = 0;
   draftExcludedAirlines.push(...(monitor.excludedAirlines || []));
+  setCheckedRadio(airlineModeInputs, normalizeAirlineMode(monitor.airlineMode));
   startFromInput.value = monitor.startFrom;
   startToInput.value = monitor.startTo;
   tripMinInput.value = monitor.tripMin;
   tripMaxInput.value = monitor.tripMax;
+  setCheckedRadio(tripLengthModeInputs, inferTripLengthMode(monitor));
   maxStopsInput.value = monitor.maxStops;
   renderDraftPairs();
   renderDraftExcludedAirlines();
   clampTripLengthsToDateBounds();
+  updateTripLengthModeUi();
 }
 
 function readMonitorForm() {
@@ -973,10 +994,19 @@ function readMonitorForm() {
   const pairs = getMonitorPairsFromForm();
   const startFrom = startFromInput.value;
   const startTo = startToInput.value;
-  const tripMin = Number(tripMinInput.value);
-  const tripMax = Number(tripMaxInput.value);
+  const tripLengthMode = getCheckedRadioValue(tripLengthModeInputs, "range");
+  const maxBound = getDateBoundTripMax();
+  let tripMin = Number(tripMinInput.value);
+  let tripMax = Number(tripMaxInput.value);
+  if (tripLengthMode === "any") {
+    tripMin = 0;
+    tripMax = maxBound;
+  } else if (tripLengthMode === "exact") {
+    tripMax = tripMin;
+  }
   const maxStops = normalizeMaxStops(maxStopsInput.value);
   const excludedAirlines = getExcludedAirlinesFromForm();
+  const airlineMode = getCheckedRadioValue(airlineModeInputs, "exclude");
 
   if (!pairs.length) {
     showToast("Add at least one airport pair.");
@@ -999,6 +1029,7 @@ function readMonitorForm() {
     tripMax,
     maxStops,
     excludedAirlines,
+    airlineMode,
   };
 }
 
@@ -1009,12 +1040,45 @@ function getExcludedAirlinesFromForm() {
   return uniqueValues(airlines);
 }
 
+function getCheckedRadioValue(inputs, fallback) {
+  return [...inputs].find((input) => input.checked)?.value || fallback;
+}
+
+function setCheckedRadio(inputs, value) {
+  const normalizedValue = String(value || "");
+  inputs.forEach((input) => {
+    input.checked = input.value === normalizedValue;
+  });
+}
+
+function inferTripLengthMode(monitor) {
+  const maxBound = getDateBoundTripMax();
+  if (Number(monitor.tripMin) === 0 && Number(monitor.tripMax) === maxBound) return "any";
+  if (Number(monitor.tripMin) === Number(monitor.tripMax)) return "exact";
+  return "range";
+}
+
+function updateTripLengthModeUi() {
+  const mode = getCheckedRadioValue(tripLengthModeInputs, "range");
+  document.querySelector(".trip-length-panel")?.setAttribute("data-mode", mode);
+  tripMaxInput.disabled = mode !== "range";
+  maxTripLengthButton.hidden = mode !== "range";
+  const exact = mode === "exact";
+  tripMinInput.setAttribute("aria-label", exact ? "Exact trip length" : "Minimum days");
+  if (mode === "exact") tripMaxInput.value = tripMinInput.value;
+  if (mode === "any") {
+    tripMinInput.value = "0";
+    tripMaxInput.value = getDateBoundTripMax();
+  }
+  clampTripLengthsToDateBounds();
+}
+
 function handleStepperClick(event) {
   const target = document.querySelector(`#${event.currentTarget.dataset.stepTarget}`);
   const step = Number(event.currentTarget.dataset.step);
   const current = Number(target.value) || 0;
   target.value = Math.max(0, current + step);
-  clampTripLengthsToDateBounds();
+  updateTripLengthModeUi();
 }
 
 function setTripMaxToDateBounds() {
@@ -1051,7 +1115,12 @@ function addDraftExcludedAirline() {
 }
 
 function renderDraftExcludedAirlines() {
-  airlineCount.textContent = `${draftExcludedAirlines.length} excluded`;
+  const mode = getCheckedRadioValue(airlineModeInputs, "exclude");
+  const isInclude = mode === "include";
+  airlineFieldLabel.textContent = isInclude ? "Only these airlines" : "Exclude airlines";
+  airlineCount.textContent = draftExcludedAirlines.length
+    ? `${draftExcludedAirlines.length} ${draftExcludedAirlines.length === 1 ? "airline" : "airlines"} ${isInclude ? "selected" : "excluded"}`
+    : (isInclude ? "Any airline" : "0 excluded");
   airlineList.innerHTML = "";
   if (!draftExcludedAirlines.length) return;
   draftExcludedAirlines.forEach((code, index) => {
@@ -1186,6 +1255,31 @@ async function runSweepForAll(manual) {
     render();
     showToast(error.message || "Fare search failed.");
     throw error;
+  }
+}
+
+async function runSweepForMonitor(monitorId) {
+  if (sweepState.isSweeping) {
+    showToast("Fare search is already running.");
+    return;
+  }
+  startSweepProgress(1);
+  render();
+  try {
+    setActiveSweepMonitor(monitorId);
+    const monitor = state.monitors.find((entry) => entry.id === monitorId);
+    updateSweepProgress(`Checking ${monitor ? formatMonitorRoutes(normalizeMonitor(monitor)) : "trip"}`);
+    await runSweep(monitorId, true, { deferRender: true });
+    completeSweepProgressStep();
+    state.lastSweepAt = new Date().toISOString();
+    saveState();
+    finishSweepProgress();
+    render();
+    showToast("Fares ready.");
+  } catch (error) {
+    finishSweepProgress();
+    render();
+    showToast(error.message || "Fare search failed.");
   }
 }
 
@@ -1503,6 +1597,7 @@ function renderFareLoadingTable() {
       <span>Start</span>
       <span>End</span>
       <span>Days</span>
+      <span>Total</span>
       <span>Airline</span>
       <span>Stops</span>
       <span>Price</span>
@@ -1512,7 +1607,7 @@ function renderFareLoadingTable() {
       ${Array.from({ length: 4 }, () => `
         <div class="fare-skeleton-row" aria-hidden="true">
           <span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
         </div>
       `).join("")}
     </div>
@@ -1560,6 +1655,7 @@ function fareEntriesFromGroups(groups) {
         sourceUrl: buildGoogleFlightsUrlFromDeal(option) || option.sourceUrl || deal.sourceUrl || "https://www.google.com/travel/flights",
         airlineDisplay: airline,
         airlineFilter: airline,
+        totalLength: totalTripLength(option.length),
         bucketIndex,
         optionIndex,
       };
@@ -1671,6 +1767,7 @@ function compareFareEntryColumn(a, b, column) {
   if (column === "start") return String(a.depart || "").localeCompare(String(b.depart || ""));
   if (column === "end") return String(a.returnDate || "").localeCompare(String(b.returnDate || ""));
   if (column === "length") return Number(a.length || 0) - Number(b.length || 0);
+  if (column === "totalLength") return Number(a.totalLength || 0) - Number(b.totalLength || 0);
   return Number(a.price || 0) - Number(b.price || 0);
 }
 
@@ -1686,6 +1783,10 @@ function compareFareEntryTiebreakers(a, b, column) {
   if (column !== "length") {
     const length = Number(a.length || 0) - Number(b.length || 0);
     if (length) return length;
+  }
+  if (column !== "totalLength") {
+    const totalLength = Number(a.totalLength || 0) - Number(b.totalLength || 0);
+    if (totalLength) return totalLength;
   }
   if (column !== "end") {
     const end = String(a.returnDate || "").localeCompare(String(b.returnDate || ""));
@@ -1707,6 +1808,7 @@ function renderFareTable(monitorId, entries, view, isLoading = false) {
       ${renderSortHeader("start", "Start", view)}
       ${renderSortHeader("end", "End", view)}
       ${renderSortHeader("length", "Days", view)}
+      ${renderSortHeader("totalLength", "Total", view)}
       <span>Airline</span>
       <span>Stops</span>
       ${renderSortHeader("price", "Price", view)}
@@ -1775,6 +1877,7 @@ function renderFareTableRow(entry) {
     <span>${formatDate(entry.depart)}</span>
     <span>${formatDate(entry.returnDate)}</span>
     <span>${formatDayCount(entry.length)}</span>
+    <span>${formatDayCount(entry.totalLength)}</span>
     <span>${entry.airlineDisplay ? escapeHtml(entry.airlineDisplay) : "&mdash;"}</span>
     <span>${formatDealStops(entry)}</span>
     <strong class="fare-row-price">${formatMoney(entry.price)}</strong>
@@ -1977,7 +2080,7 @@ function renderMonitors() {
       <header>
         <div>
           ${monitorRouteTitleHtml(monitor)}
-          <div class="monitor-meta">${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatStops(monitor.maxStops)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</div>
+          <div class="monitor-meta">${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${formatTripLengthSummary(monitor)} · ${formatStops(monitor.maxStops)} · ${formatAirlineFilter(monitor)}</div>
         </div>
         <div class="monitor-header-actions">
           <details class="monitor-menu">
@@ -2085,7 +2188,7 @@ function renderShareImportOverlay() {
     row.className = "share-import-row";
     row.innerHTML = `
       <strong>${formatMonitorRoutes(monitor)}</strong>
-      <span>${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatStops(monitor.maxStops)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</span>
+      <span>${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${formatTripLengthSummary(monitor)} · ${formatStops(monitor.maxStops)} · ${formatAirlineFilter(monitor)}</span>
     `;
     preview.appendChild(row);
   });
@@ -2183,6 +2286,10 @@ function formatDayCount(value) {
   return `${formatInteger(days)} ${days === 1 ? "day" : "days"}`;
 }
 
+function totalTripLength(length) {
+  return Math.max(1, Math.trunc(Number(length) || 0) + 1);
+}
+
 function makeId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
@@ -2241,10 +2348,29 @@ function formatTripCount(count) {
   return `${formatInteger(count)} ${count === 1 ? "trip" : "trips"}`;
 }
 
+function formatTripLengthSummary(monitor) {
+  const maxBound = TravelWindowLogic.maxTripLengthForRange(monitor.startFrom, monitor.startTo);
+  if (Number(monitor.tripMin) === 0 && Number(monitor.tripMax) === maxBound) return "any length";
+  if (Number(monitor.tripMin) === Number(monitor.tripMax)) return `${formatInteger(monitor.tripMin)} days`;
+  return `${formatInteger(monitor.tripMin)}-${formatInteger(monitor.tripMax)} days`;
+}
+
 function formatExcludedAirlines(codes) {
   const count = Array.isArray(codes) ? codes.length : 0;
   if (!count) return "no airline exclusions";
   return `${count} airline ${count === 1 ? "excluded" : "exclusions"}`;
+}
+
+function formatAirlineFilter(monitor) {
+  const count = Array.isArray(monitor.excludedAirlines) ? monitor.excludedAirlines.length : 0;
+  const mode = normalizeAirlineMode(monitor.airlineMode);
+  if (!count) return mode === "include" ? "any airline" : "no airline exclusions";
+  if (mode === "include") return `${count} ${count === 1 ? "airline" : "airlines"} selected`;
+  return count === 1 ? "1 airline excluded" : `${count} airline exclusions`;
+}
+
+function normalizeAirlineMode(value) {
+  return value === "include" ? "include" : "exclude";
 }
 
 function formatStops(value) {

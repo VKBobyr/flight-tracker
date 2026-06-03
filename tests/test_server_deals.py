@@ -141,5 +141,64 @@ class SearchPlanningTests(unittest.TestCase):
     self.assertEqual(skipped, 1)
 
 
+class AirlineFilterModeTests(unittest.TestCase):
+  def test_normalizes_include_airline_mode(self):
+    monitor = server.normalize_monitor({
+      "pairs": [{"origin": "SFO", "destination": "SEA"}],
+      "startFrom": "2026-07-01",
+      "startTo": "2026-07-05",
+      "tripMin": 2,
+      "tripMax": 3,
+      "airlineMode": "include",
+      "excludedAirlines": ["ua"],
+    })
+
+    self.assertEqual(monitor["airline_mode"], "include")
+    self.assertEqual(monitor["excluded_airlines"], ["UA"])
+
+  def test_airline_mode_is_part_of_sweep_cache_key(self):
+    base = {
+      "pairs": [{"origin": "SFO", "destination": "SEA"}],
+      "startFrom": "2026-07-01",
+      "startTo": "2026-07-05",
+      "tripMin": 2,
+      "tripMax": 3,
+      "excludedAirlines": ["UA"],
+    }
+
+    exclude_key = server.sweep_cache_key(server.normalize_monitor({**base, "airlineMode": "exclude"}))
+    include_key = server.sweep_cache_key(server.normalize_monitor({**base, "airlineMode": "include"}))
+
+    self.assertNotEqual(exclude_key, include_key)
+
+  def test_airline_filter_kwargs_match_selected_mode(self):
+    exclude_monitor = server.normalize_monitor({
+      "pairs": [{"origin": "SFO", "destination": "SEA"}],
+      "startFrom": "2026-07-01",
+      "startTo": "2026-07-05",
+      "tripMin": 2,
+      "tripMax": 3,
+      "airlineMode": "exclude",
+      "excludedAirlines": ["ua", "as"],
+    })
+    include_monitor = server.normalize_monitor({
+      **{
+        "pairs": [{"origin": "SFO", "destination": "SEA"}],
+        "startFrom": "2026-07-01",
+        "startTo": "2026-07-05",
+        "tripMin": 2,
+        "tripMax": 3,
+        "excludedAirlines": ["ua", "as"],
+      },
+      "airlineMode": "include",
+    })
+
+    exclude_kwargs = server.airline_filter_kwargs(exclude_monitor)
+    include_kwargs = server.airline_filter_kwargs(include_monitor)
+
+    self.assertEqual([airline.name for airline in exclude_kwargs["airlines_exclude"]], ["AS", "UA"])
+    self.assertEqual([airline.name for airline in include_kwargs["airlines"]], ["AS", "UA"])
+
+
 if __name__ == "__main__":
   unittest.main()

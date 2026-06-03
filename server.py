@@ -175,6 +175,15 @@ def run_search_job(pair: dict, monitor: dict, duration: int) -> tuple[list[dict]
   return search_flexible_dates(pair, monitor, duration)
 
 
+def airline_filter_kwargs(monitor: dict) -> dict:
+  airlines = parse_airlines(monitor["excluded_airlines"])
+  if not airlines:
+    return {}
+  if monitor.get("airline_mode") == "include":
+    return {"airlines": airlines}
+  return {"airlines_exclude": airlines}
+
+
 def normalize_monitor(monitor: dict) -> dict:
   if not isinstance(monitor, dict):
     raise ValueError("Monitor payload must be an object")
@@ -208,6 +217,7 @@ def normalize_monitor(monitor: dict) -> dict:
     for code in (monitor.get("excludedAirlines") or [])
     if clean_airline_code(code)
   })[:MAX_EXCLUDED_AIRLINES]
+  airline_mode = "include" if monitor.get("airlineMode") == "include" else "exclude"
   max_stops = normalize_max_stops(monitor.get("maxStops", 0))
 
   return {
@@ -218,6 +228,7 @@ def normalize_monitor(monitor: dict) -> dict:
     "trip_max": trip_max,
     "max_stops": max_stops,
     "excluded_airlines": excluded_airlines,
+    "airline_mode": airline_mode,
     "combination_count": count_combinations(pairs, start_from, start_to, trip_min, trip_max),
   }
 
@@ -243,7 +254,7 @@ def search_flexible_dates(pair: dict, monitor: dict, duration: int) -> tuple[lis
     flight_segments=segments,
     stops=parse_max_stops(monitor["max_stops"]),
     seat_type=parse_cabin_class("ECONOMY"),
-    airlines_exclude=parse_airlines(monitor["excluded_airlines"]),
+    **airline_filter_kwargs(monitor),
     from_date=monitor["start_from"],
     to_date=monitor["start_to"],
     duration=duration,
@@ -268,7 +279,7 @@ def search_same_day_flights(pair: dict, monitor: dict) -> tuple[list[dict], int]
 
   deals = []
   query_count = 0
-  excluded = set(monitor["excluded_airlines"])
+  excluded = set(monitor["excluded_airlines"] if monitor.get("airline_mode") == "exclude" else [])
   for depart in enumerate_dates(monitor["start_from"], monitor["start_to"]):
     origin = resolve_airport(pair["origin"])
     destination = resolve_airport(pair["destination"])
@@ -284,7 +295,7 @@ def search_same_day_flights(pair: dict, monitor: dict) -> tuple[list[dict], int]
       flight_segments=segments,
       stops=parse_max_stops(monitor["max_stops"]),
       seat_type=parse_cabin_class("ECONOMY"),
-      airlines_exclude=parse_airlines(monitor["excluded_airlines"]),
+      **airline_filter_kwargs(monitor),
       sort_by=SortBy.CHEAPEST,
     )
     results = SearchFlights().search(filters, top_n=3, currency="USD", language="en-US", country="US") or []
@@ -354,11 +365,9 @@ def flight_result_to_deal(pair: dict, result: object, depart: str, return_date: 
 def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], int]:
   enriched = []
   query_count = 0
-  excluded = set(monitor["excluded_airlines"])
-  max_stops = monitor["max_stops"]
   for deal in deals:
     if deal.get("fareOptions"):
-      next_deal, used_queries = enrich_fare_bucket_airlines(deal, excluded, max_stops)
+      next_deal, used_queries = enrich_fare_bucket_airlines(deal, monitor)
       enriched.append(next_deal)
       query_count += used_queries
       continue
@@ -366,7 +375,7 @@ def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], 
       enriched.append(deal)
       continue
     try:
-      next_deal, used_query = enrich_single_deal_airline(deal, excluded, max_stops)
+      next_deal, used_query = enrich_single_deal_airline(deal, monitor)
       enriched.append(next_deal)
       query_count += used_query
     except Exception:
@@ -375,7 +384,7 @@ def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], 
   return enriched, query_count
 
 
-def enrich_fare_bucket_airlines(deal: dict, excluded: set[str], max_stops: str) -> tuple[dict, int]:
+def enrich_fare_bucket_airlines(deal: dict, monitor: dict) -> tuple[dict, int]:
   next_deal = dict(deal)
   options = []
   query_count = 0
@@ -383,7 +392,7 @@ def enrich_fare_bucket_airlines(deal: dict, excluded: set[str], max_stops: str) 
     next_option = dict(option)
     if index < MAX_ENRICHED_FARE_OPTIONS_PER_BUCKET and not has_real_airline(next_option):
       try:
-        next_option, used_query = enrich_single_deal_airline(next_option, excluded, max_stops)
+        next_option, used_query = enrich_single_deal_airline(next_option, monitor)
         query_count += used_query
       except Exception:
         next_option["airlineName"] = best_available_airline_label(next_option)
@@ -436,8 +445,9 @@ def apply_fare_bucket_airline_summary(deal: dict, options: list[dict]) -> None:
     deal["airlineCode"] = ""
 
 
-def enrich_single_deal_airline(deal: dict, excluded: set[str], max_stops: str) -> tuple[dict, int]:
-  cache_key = flight_detail_cache_key(deal, excluded, max_stops)
+def enrich_single_deal_airline(deal: dict, monitor: dict) -> tuple[dict, int]:
+  excluded = set(monitor["excluded_airlines"] if monitor.get("airline_mode") == "exclude" else [])
+  cache_key = flight_detail_cache_key(deal, monitor)
   cached = read_cache(flight_detail_cache, cache_key)
   if cached:
     deal.update(cached)
@@ -455,9 +465,9 @@ def enrich_single_deal_airline(deal: dict, excluded: set[str], max_stops: str) -
     trip_type=trip_type,
     passenger_info=PassengerInfo(adults=1),
     flight_segments=segments,
-    stops=parse_max_stops(max_stops),
+    stops=parse_max_stops(monitor["max_stops"]),
     seat_type=parse_cabin_class("ECONOMY"),
-    airlines_exclude=parse_airlines(list(excluded)),
+    **airline_filter_kwargs(monitor),
     sort_by=SortBy.CHEAPEST,
   )
   results = SearchFlights().search(filters, top_n=5, currency="USD", language="en-US", country="US") or []
@@ -790,18 +800,20 @@ def sweep_cache_key(normalized: dict) -> str:
     "trip_min": normalized["trip_min"],
     "trip_max": normalized["trip_max"],
     "max_stops": normalized["max_stops"],
+    "airline_mode": normalized["airline_mode"],
     "excluded_airlines": sorted(normalized["excluded_airlines"]),
   }, sort_keys=True, separators=(",", ":"))
 
 
-def flight_detail_cache_key(deal: dict, excluded: set[str], max_stops: str) -> str:
+def flight_detail_cache_key(deal: dict, monitor: dict) -> str:
   return json.dumps({
     "origin": deal.get("origin"),
     "destination": deal.get("destination"),
     "depart": deal.get("depart"),
     "returnDate": deal.get("returnDate"),
-    "max_stops": max_stops,
-    "excluded": sorted(excluded),
+    "max_stops": monitor.get("max_stops"),
+    "airline_mode": monitor.get("airline_mode"),
+    "airlines": sorted(monitor.get("excluded_airlines") or []),
   }, sort_keys=True, separators=(",", ":"))
 
 
@@ -814,6 +826,7 @@ def search_query_cache_key(pair: dict, monitor: dict, duration: int, search_type
     "start_to": monitor.get("start_to"),
     "duration": duration,
     "max_stops": monitor.get("max_stops"),
+    "airline_mode": monitor.get("airline_mode"),
     "excluded_airlines": sorted(monitor.get("excluded_airlines") or []),
   }, sort_keys=True, separators=(",", ":"))
 
@@ -963,6 +976,7 @@ def monitor_from_share_value(value: object) -> dict:
     pair_values = value[0] if len(value) > 0 else []
     has_max_stops = len(value) > 5 and not isinstance(value[5], list)
     excluded_airlines = value[6] if has_max_stops and len(value) > 6 else value[5] if len(value) > 5 else []
+    airline_mode = value[7] if has_max_stops and len(value) > 7 else "exclude"
     pairs = [
       {"origin": clean_iata(pair[0] if len(pair) > 0 else ""), "destination": clean_iata(pair[1] if len(pair) > 1 else "")}
       for pair in pair_values
@@ -976,6 +990,7 @@ def monitor_from_share_value(value: object) -> dict:
       "tripMax": value[4] if len(value) > 4 else 0,
       "maxStops": normalize_max_stops(value[5] if has_max_stops else 0),
       "excludedAirlines": [clean_airline_code(code) for code in (excluded_airlines if isinstance(excluded_airlines, list) else [])],
+      "airlineMode": "include" if airline_mode == "include" else "exclude",
     }
   elif isinstance(value, dict):
     monitor = {
@@ -990,12 +1005,14 @@ def monitor_from_share_value(value: object) -> dict:
       "tripMax": value.get("tripMax", 0),
       "maxStops": normalize_max_stops(value.get("maxStops", 0)),
       "excludedAirlines": [clean_airline_code(code) for code in value.get("excludedAirlines", [])],
+      "airlineMode": "include" if value.get("airlineMode") == "include" else "exclude",
     }
   else:
     return {"pairs": []}
 
   monitor["pairs"] = unique_pair_dicts(monitor["pairs"])
   monitor["excludedAirlines"] = sorted({code for code in monitor["excludedAirlines"] if code})
+  monitor["airlineMode"] = "include" if monitor.get("airlineMode") == "include" else "exclude"
   monitor["maxStops"] = normalize_max_stops(monitor.get("maxStops", 0))
   return monitor
 

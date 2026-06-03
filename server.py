@@ -42,6 +42,7 @@ ROOT = Path(__file__).resolve().parent
 MAX_BODY_BYTES = 2 * 1024 * 1024
 TOP_DEAL_LIMIT = 4
 MAX_FLI_QUERIES_PER_MONITOR = 80
+AIRLINE_PLACEHOLDER = "Check Google Flights for airline"
 SWEEP_CACHE_TTL_SECONDS = int(os.environ.get("SWEEP_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
 RATE_WINDOW_SECONDS = int(os.environ.get("RATE_WINDOW_SECONDS", "3600"))
 MAX_SWEEPS_PER_CLIENT_WINDOW = int(os.environ.get("MAX_SWEEPS_PER_CLIENT_WINDOW", "12"))
@@ -297,7 +298,7 @@ def flight_result_to_deal(pair: dict, result: object, depart: str, return_date: 
     "price": round_price(min(prices)),
     "currency": "USD",
     "airlineCode": ", ".join(unique_values(airline_codes)),
-    "airlineName": ", ".join(unique_values(airline_names)) or "Check Google Flights for airline",
+    "airlineName": ", ".join(unique_values(airline_names)) or AIRLINE_PLACEHOLDER,
     "stopCount": stop_count_from_flights(flights),
     "sourceName": "Google Flights",
     "sourceUrl": google_flights_url(pair["origin"], pair["destination"], depart, return_date),
@@ -311,7 +312,7 @@ def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], 
   excluded = set(monitor["excluded_airlines"])
   max_stops = monitor["max_stops"]
   for deal in deals:
-    if deal.get("airlineName"):
+    if has_real_airline(deal):
       enriched.append(deal)
       continue
     try:
@@ -319,7 +320,7 @@ def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], 
       enriched.append(next_deal)
       query_count += used_query
     except Exception:
-      deal["airlineName"] = "Check Google Flights for airline"
+      deal["airlineName"] = best_available_airline_label(deal)
       enriched.append(deal)
   return enriched, query_count
 
@@ -358,10 +359,10 @@ def enrich_single_deal_airline(deal: dict, excluded: set[str], max_stops: str) -
       best = candidate
   if best:
     deal["airlineCode"] = best.get("airlineCode", "")
-    deal["airlineName"] = best.get("airlineName") or "Check Google Flights for airline"
+    deal["airlineName"] = best_available_airline_label(best)
     deal["stopCount"] = best.get("stopCount")
   else:
-    deal["airlineName"] = "Check Google Flights for airline"
+    deal["airlineName"] = best_available_airline_label(deal)
   if best:
     write_cache(
       flight_detail_cache,
@@ -375,6 +376,10 @@ def enrich_single_deal_airline(deal: dict, excluded: set[str], max_stops: str) -
 def stop_count_from_flights(flights: tuple) -> int | None:
   counts = []
   for flight in flights:
+    stops = getattr(flight, "stops", None)
+    if isinstance(stops, int):
+      counts.append(max(0, stops))
+      continue
     legs = getattr(flight, "legs", None)
     if legs is None:
       continue
@@ -405,6 +410,12 @@ def collect_airlines(flight: object, airline_codes: list[str], airline_names: li
       airline_codes.append(code)
     if name:
       airline_names.append(name)
+    operating_airline = getattr(leg, "operating_airline", None)
+    operating_code, operating_name = airline_code_and_name(operating_airline)
+    if operating_code:
+      airline_codes.append(operating_code)
+    if operating_name:
+      airline_names.append(operating_name)
 
 
 def airline_code_and_name(airline: object) -> tuple[str, str]:
@@ -417,6 +428,21 @@ def airline_code_and_name(airline: object) -> tuple[str, str]:
   if not name and code:
     name = AIRLINE_NAMES.get(code, "")
   return code, name
+
+
+def has_real_airline(deal: dict) -> bool:
+  name = str(deal.get("airlineName") or "").strip()
+  return bool(name and name != AIRLINE_PLACEHOLDER)
+
+
+def best_available_airline_label(deal: dict) -> str:
+  name = str(deal.get("airlineName") or "").strip()
+  if name and name != AIRLINE_PLACEHOLDER:
+    return name
+  code = str(deal.get("airlineCode") or "").strip()
+  if code:
+    return ", ".join(AIRLINE_NAMES.get(part.strip(), part.strip()) for part in code.split(",") if part.strip()) or code
+  return AIRLINE_PLACEHOLDER
 
 
 def date_price_matches(result: object, monitor: dict, duration: int) -> bool:

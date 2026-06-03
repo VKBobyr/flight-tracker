@@ -57,6 +57,14 @@ button:disabled {
   cursor: not-allowed;
 }
 
+@media (hover: none), (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 .app-shell {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
@@ -1569,6 +1577,12 @@ button:disabled {
     padding: 14px 0 32px;
   }
 
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
   .topbar {
     min-height: 0;
     align-items: flex-start;
@@ -1635,7 +1649,7 @@ button:disabled {
 
   .modal-overlay {
     align-items: start;
-    padding: 12px 8px;
+    padding: max(10px, env(safe-area-inset-top)) 8px max(16px, env(safe-area-inset-bottom));
   }
 
   .modal-panel,
@@ -1643,6 +1657,16 @@ button:disabled {
     width: calc(100vw - 16px);
     max-width: calc(100vw - 16px);
     min-width: 0;
+  }
+
+  .modal-panel > .section-heading {
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+  }
+
+  .modal-close {
+    flex: 0 0 auto;
   }
 
   .share-import-header {
@@ -1670,7 +1694,7 @@ button:disabled {
     max-width: 100%;
     justify-self: stretch;
     padding-inline: 11px 8px;
-    font-size: 0.95rem;
+    font-size: 16px;
   }
 
   .airport-grid {
@@ -1715,7 +1739,7 @@ button:disabled {
 
   .trip-rule {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 8px;
     align-items: center;
   }
@@ -1731,9 +1755,17 @@ button:disabled {
     white-space: nowrap;
   }
 
+  .trip-rule > span:nth-of-type(2) {
+    justify-self: start;
+  }
+
   .max-length-button {
     width: 100%;
     grid-column: 1 / -1;
+  }
+
+  .airline-filter {
+    gap: 10px;
   }
 
   .form-actions {
@@ -1769,6 +1801,8 @@ button:disabled {
 
   .fare-controls {
     align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .fare-count,

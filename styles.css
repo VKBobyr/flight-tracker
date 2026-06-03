@@ -929,16 +929,16 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .deal-route {
+  flex: 0 0 auto;
   color: var(--ink);
-  overflow: hidden;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.98rem;
   font-weight: 900;
   letter-spacing: 0;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

@@ -40,7 +40,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent
 MAX_BODY_BYTES = 2 * 1024 * 1024
-TOP_DEAL_LIMIT = 4
+TOP_DEAL_LIMIT = 6
 MAX_FLI_QUERIES_PER_MONITOR = 80
 AIRLINE_PLACEHOLDER = "Check Google Flights for airline"
 SWEEP_CACHE_TTL_SECONDS = int(os.environ.get("SWEEP_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
@@ -112,7 +112,8 @@ def sweep_monitor(monitor: dict) -> dict:
     raise RuntimeError("; ".join(provider_errors[:3]))
 
   candidates.sort(key=deal_sort_key)
-  top_deals, enrichment_queries = enrich_deal_airlines(candidates[:TOP_DEAL_LIMIT], normalized)
+  curated_deals = curate_top_deals(candidates, TOP_DEAL_LIMIT)
+  top_deals, enrichment_queries = enrich_deal_airlines(curated_deals, normalized)
   prices = [deal["price"] for deal in candidates if isinstance(deal.get("price"), (int, float))]
   average_price = round(sum(prices) / len(prices), 2) if prices else 0
 
@@ -517,6 +518,60 @@ def round_price(value: object) -> float:
 
 def deal_sort_key(deal: dict) -> tuple:
   return (deal.get("price") or 0, deal.get("depart") or "", deal.get("length") or 0, deal.get("route") or "")
+
+
+def curate_top_deals(candidates: list[dict], limit: int = TOP_DEAL_LIMIT) -> list[dict]:
+  priced = [deal for deal in candidates if isinstance(deal.get("price"), (int, float))]
+  if not priced:
+    return [with_deal_reason(deal, "Direct search") for deal in candidates[:limit]]
+
+  cheapest_price = min(deal["price"] for deal in priced)
+  low_fare_ceiling = cheapest_price * 1.15
+  selected: list[dict] = []
+  selected_keys: set[tuple] = set()
+
+  def add(reason: str, deal: dict | None) -> None:
+    if not deal or len(selected) >= limit:
+      return
+    key = deal_identity(deal)
+    if key in selected_keys:
+      return
+    selected_keys.add(key)
+    selected.append(with_deal_reason(deal, reason))
+
+  low_fares = [deal for deal in priced if deal["price"] <= low_fare_ceiling]
+  add("Cheapest", min(priced, key=deal_sort_key))
+  add("Best value", min(priced, key=lambda deal: (price_per_day(deal), deal_sort_key(deal))))
+  add("Longest low fare", max(low_fares, key=lambda deal: (int(deal.get("length") or 0), -float(deal.get("price") or 0), str(deal.get("depart") or ""))) if low_fares else None)
+  add("Shortest", min(priced, key=lambda deal: (int(deal.get("length") or 0), deal_sort_key(deal))))
+  add("Earliest good fare", min(low_fares, key=lambda deal: (str(deal.get("depart") or ""), deal_sort_key(deal))) if low_fares else None)
+
+  for deal in sorted(priced, key=deal_sort_key):
+    add("Next cheapest", deal)
+    if len(selected) >= limit:
+      break
+
+  return selected
+
+
+def with_deal_reason(deal: dict, reason: str) -> dict:
+  next_deal = dict(deal)
+  next_deal["dealReason"] = reason
+  return next_deal
+
+
+def deal_identity(deal: dict) -> tuple:
+  return (
+    deal.get("origin") or "",
+    deal.get("destination") or "",
+    deal.get("depart") or "",
+    deal.get("returnDate") or "",
+    deal.get("length") or 0,
+  )
+
+
+def price_per_day(deal: dict) -> float:
+  return float(deal.get("price") or 0) / max(1, int(deal.get("length") or 0))
 
 
 def format_route(pair: dict) -> str:

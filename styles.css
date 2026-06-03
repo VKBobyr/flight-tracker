@@ -941,6 +941,22 @@ button:disabled {
   white-space: nowrap;
 }
 
+.deal-reason {
+  flex: 0 0 auto;
+  min-height: 21px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(10, 132, 255, 0.22);
+  border-radius: 999px;
+  padding: 0 8px;
+  background: linear-gradient(135deg, rgba(10, 132, 255, 0.14), rgba(109, 99, 255, 0.10));
+  color: var(--accent-dark);
+  font-size: 0.63rem;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .deal-stops {
   flex: 0 0 auto;
   min-height: 22px;

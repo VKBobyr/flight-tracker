@@ -82,7 +82,7 @@ const CLIENT_DB_KEY = "default";
 const CLIENT_ID_KEY = "flight-tracker-client-id-v1";
 const MONITOR_URL_PARAM = "m";
 const SWEEP_API_URL = "/api/sweep";
-const TOP_DEAL_LIMIT = 4;
+const TOP_DEAL_LIMIT = 6;
 const AIRLINE_FALLBACK = "Airline unavailable";
 const TravelWindowLogic = window.TravelWindows;
 
@@ -1256,7 +1256,7 @@ function buildClientSweep(monitor) {
   return {
     provider: "client",
     ranAt,
-    topDeals: candidates.slice(0, TOP_DEAL_LIMIT),
+    topDeals: curateClientDeals(candidates, TOP_DEAL_LIMIT),
     candidateCount: candidates.length,
     combinationCount: countTravelWindows(monitor),
   };
@@ -1273,6 +1273,7 @@ function normalizeDeal(deal) {
     sourceName: deal.sourceName || "Google Flights",
     sourceUrl: deal.sourceUrl || buildGoogleFlightsUrlFromDeal(deal),
     provider: deal.provider || "client",
+    dealReason: String(deal.dealReason || "").trim(),
   };
 }
 
@@ -1338,6 +1339,53 @@ function compareDeals(a, b) {
     || String(a.route || "").localeCompare(String(b.route || ""));
 }
 
+function curateClientDeals(candidates, limit = TOP_DEAL_LIMIT) {
+  const priced = candidates.filter((deal) => hasPrice(deal.price));
+  if (!priced.length) {
+    return candidates.slice(0, limit).map((deal) => ({ ...deal, dealReason: "Direct search" }));
+  }
+
+  const cheapestPrice = Math.min(...priced.map((deal) => Number(deal.price)));
+  const lowFareCeiling = cheapestPrice * 1.15;
+  const lowFares = priced.filter((deal) => Number(deal.price) <= lowFareCeiling);
+  const selected = [];
+  const selectedKeys = new Set();
+  const addDeal = (reason, deal) => {
+    if (!deal || selected.length >= limit) return;
+    const key = dealIdentity(deal);
+    if (selectedKeys.has(key)) return;
+    selectedKeys.add(key);
+    selected.push({ ...deal, dealReason: reason });
+  };
+
+  addDeal("Cheapest", priced.slice().sort(compareDeals)[0]);
+  addDeal("Best value", priced.slice().sort((a, b) => pricePerDay(a) - pricePerDay(b) || compareDeals(a, b))[0]);
+  addDeal("Longest low fare", lowFares.slice().sort((a, b) => (
+    Number(b.length || 0) - Number(a.length || 0)
+    || Number(a.price || 0) - Number(b.price || 0)
+    || String(a.depart || "").localeCompare(String(b.depart || ""))
+  ))[0]);
+  addDeal("Shortest", priced.slice().sort((a, b) => Number(a.length || 0) - Number(b.length || 0) || compareDeals(a, b))[0]);
+  addDeal("Earliest good fare", lowFares.slice().sort((a, b) => String(a.depart || "").localeCompare(String(b.depart || "")) || compareDeals(a, b))[0]);
+
+  priced.slice().sort(compareDeals).forEach((deal) => addDeal("Next cheapest", deal));
+  return selected.slice(0, limit);
+}
+
+function dealIdentity(deal) {
+  return [
+    deal.origin || "",
+    deal.destination || "",
+    deal.depart || "",
+    deal.returnDate || "",
+    deal.length || 0,
+  ].join("|");
+}
+
+function pricePerDay(deal) {
+  return Number(deal.price || 0) / Math.max(1, Number(deal.length || 0));
+}
+
 function hasPrice(value) {
   return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 }
@@ -1370,6 +1418,12 @@ function renderLastSweepAt() {
 function renderDeal(deal) {
   const template = document.querySelector("#dealTemplate");
   const node = template.content.firstElementChild.cloneNode(true);
+  const reason = node.querySelector(".deal-reason");
+  if (deal.dealReason) {
+    reason.textContent = deal.dealReason;
+  } else {
+    reason.remove();
+  }
   node.querySelector(".deal-route").textContent = deal.route;
   node.querySelector(".deal-airline").textContent = normalizeAirlineName(deal.airlineName, deal.airlineCode);
   node.querySelector(".deal-dates").textContent = `${formatDate(deal.depart)} to ${formatDate(deal.returnDate)}`;

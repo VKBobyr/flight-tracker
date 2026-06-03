@@ -1170,7 +1170,7 @@ async function runSweep(monitorId, manual, options = {}) {
     return false;
   }
   monitor.lastRunAt = sweep.ranAt;
-  monitor.topDeals = sweep.topDeals.map(normalizeDeal);
+  monitor.topDeals = sweep.topDeals.slice(0, TOP_DEAL_LIMIT).map(normalizeDeal);
   monitor.combinationCount = sweep.combinationCount;
   updateSweepStorageForMonitor(monitor);
   if (sweep.provider === "client") {
@@ -1543,7 +1543,7 @@ function renderMonitors() {
       <section class="monitor-deals" aria-label="Top searches for this monitor">
         <div class="monitor-deals-heading">
           <h4>Top searches for this monitor</h4>
-          <span>${monitor.topDeals.length ? `Top ${monitor.topDeals.length}` : "No sweep yet"}</span>
+          ${monitor.topDeals.length ? "" : "<span>No sweep yet</span>"}
         </div>
         <div class="deals-list"></div>
       </section>

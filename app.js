@@ -107,7 +107,6 @@ const originSuggestions = document.querySelector("#originSuggestions");
 const destinationSuggestions = document.querySelector("#destinationSuggestions");
 const monitorGrid = document.querySelector("#monitorGrid");
 const monitorCount = document.querySelector("#monitorCount");
-const globalDeals = document.querySelector("#globalDeals");
 const lastSweepAt = document.querySelector("#lastSweepAt");
 const sweepProgress = document.querySelector("#sweepProgress");
 const sweepProgressTitle = document.querySelector("#sweepProgressTitle");
@@ -215,7 +214,6 @@ function loadLocalState() {
 function saveState() {
   state.monitors = state.monitors.map(normalizeMonitor);
   state.monitors.forEach(updateSweepStorageForMonitor);
-  state.lastGlobalDeals = computeGlobalDeals();
   const snapshot = JSON.stringify(storageState(state));
   localStorage.setItem(STORAGE_KEY, snapshot);
   queueClientDbSave(snapshot);
@@ -295,7 +293,6 @@ function replaceState(nextState) {
   const normalized = normalizeState(nextState);
   state.monitors = normalized.monitors;
   state.sweepData = normalized.sweepData;
-  state.lastGlobalDeals = normalized.lastGlobalDeals;
   state.lastSweepAt = normalized.lastSweepAt;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(storageState(normalized)));
 }
@@ -409,10 +406,7 @@ function normalizeState(value) {
   const sweepData = value && value.sweepData && typeof value.sweepData === "object" ? value.sweepData : {};
   const sweepTime = value && value.lastSweepAt ? String(value.lastSweepAt) : null;
   monitors.forEach((monitor) => attachStoredSweepData(monitor, sweepData));
-  const lastGlobalDeals = monitors.flatMap((monitor) => monitor.topDeals.map((deal) => ({ ...deal })))
-    .sort(compareDeals)
-    .slice(0, TOP_DEAL_LIMIT);
-  return { monitors, sweepData, lastGlobalDeals, lastSweepAt: sweepTime };
+  return { monitors, sweepData, lastSweepAt: sweepTime };
 }
 
 function readMonitorsFromUrl() {
@@ -561,7 +555,6 @@ function consumeSharedMonitors(mode) {
     state.monitors = mergeMonitorLists(state.monitors, incoming);
   }
   state.monitors = normalizeState({ monitors: state.monitors, sweepData: state.sweepData }).monitors;
-  state.lastGlobalDeals = computeGlobalDeals();
   state.lastSweepAt = getLatestMonitorRunAt(state.monitors);
   closeSharedImportPrompt();
   clearSharedMonitorUrl();
@@ -852,7 +845,6 @@ function saveMonitorFromForm(event) {
       nextMonitor.combinationCount = undefined;
     }
     state.monitors[index] = nextMonitor;
-    state.lastGlobalDeals = computeGlobalDeals();
     saveState();
     render();
     closeCreateMonitorOverlay();
@@ -1154,7 +1146,6 @@ async function runSweepForAll(manual) {
       completeSweepProgressStep();
     }
 
-    state.lastGlobalDeals = computeGlobalDeals();
     state.lastSweepAt = new Date().toISOString();
     saveState();
     finishSweepProgress();
@@ -1192,7 +1183,6 @@ async function runSweep(monitorId, manual, options = {}) {
   }
 
   if (!options.deferRender) {
-    state.lastGlobalDeals = computeGlobalDeals();
     saveState();
     render();
   }
@@ -1312,13 +1302,6 @@ function finishSweepProgress() {
   sweepState.isSweeping = false;
 }
 
-function computeGlobalDeals() {
-  return state.monitors
-    .flatMap((monitor) => monitor.topDeals.map((deal) => ({ ...deal })))
-    .sort(compareDeals)
-    .slice(0, TOP_DEAL_LIMIT);
-}
-
 function compareDeals(a, b) {
   const aHasPrice = hasPrice(a.price);
   const bHasPrice = hasPrice(b.price);
@@ -1340,7 +1323,6 @@ function render() {
   monitorCount.textContent = `${formatInteger(count)} ${count === 1 ? "monitor" : "monitors"}`;
   renderToolbarPriority(count);
   renderLastSweepAt();
-  renderGlobalDeals();
   renderMonitors();
   renderShareImportOverlay();
 }
@@ -1359,18 +1341,6 @@ function renderToolbarPriority(count) {
 function renderLastSweepAt() {
   if (!lastSweepAt) return;
   lastSweepAt.textContent = state.lastSweepAt ? `Last run ${formatDateTime(state.lastSweepAt)}` : "No sweeps yet";
-}
-
-function renderGlobalDeals() {
-  const deals = state.lastGlobalDeals || [];
-  globalDeals.innerHTML = "";
-  if (!deals.length) {
-    globalDeals.innerHTML = state.monitors.length
-      ? '<p class="empty-state">Run a sweep to build Google Flights searches across your monitors.</p>'
-      : '<p class="empty-state">Create a monitor to start building flexible-date searches.</p>';
-    return;
-  }
-  deals.forEach((deal) => globalDeals.appendChild(renderDeal(deal)));
 }
 
 function renderDeal(deal) {
@@ -1683,7 +1653,6 @@ function removeMonitor(id) {
   if (!window.confirm(`Delete ${label}? This will remove its saved sweep data.`)) return;
   if (monitor?.configSignature) delete state.sweepData[monitor.configSignature];
   state.monitors = state.monitors.filter((monitor) => monitor.id !== id);
-  state.lastGlobalDeals = computeGlobalDeals();
   saveState();
   render();
 }

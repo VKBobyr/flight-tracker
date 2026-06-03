@@ -142,7 +142,6 @@ button:disabled {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.78fr);
   gap: 18px;
   align-items: start;
 }
@@ -152,7 +151,6 @@ button:disabled {
 }
 
 .builder-panel,
-.deals-panel,
 .monitors-section {
   min-width: 0;
   border: 1px solid rgba(255, 255, 255, 0.78);
@@ -167,12 +165,7 @@ button:disabled {
   background: rgba(255, 255, 255, 0.72);
 }
 
-.deals-panel {
-  background: rgba(255, 255, 255, 0.58);
-}
-
 .builder-panel,
-.deals-panel,
 .monitors-section {
   padding: 19px;
 }
@@ -824,7 +817,7 @@ button:disabled {
 .deals-list {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
 }
 
 .deals-list > .empty-state {
@@ -1056,7 +1049,7 @@ button:disabled {
 
 .monitor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
   gap: 16px;
 }
 
@@ -1379,7 +1372,6 @@ button:disabled {
 }
 
 @media (max-width: 900px) {
-  .workspace,
   .monitor-grid,
   .trip-length-panel {
     grid-template-columns: 1fr;
@@ -1608,7 +1600,6 @@ button:disabled {
   }
 
   .builder-panel,
-  .deals-panel,
   .monitors-section {
     padding: 14px;
   }
@@ -1638,7 +1629,6 @@ button:disabled {
   }
 
   .builder-panel,
-  .deals-panel,
   .monitors-section {
     padding: 12px;
   }

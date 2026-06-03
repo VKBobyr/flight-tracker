@@ -9,6 +9,7 @@ A flight fare dashboard with locally saved monitors, shareable monitor setup lin
 - Fuzzy airport search by IATA code, airport name, city, or country.
 - Fuzzy airline search for excluded airlines.
 - Flexible earliest start and latest end dates plus minimum and maximum trip length. Trip max can be lower than min; sweeps normalize the range when searching.
+- Maximum stops filtering, defaulting new monitors to nonstop.
 - Manual sweeps across every saved monitor.
 - Top 5 priced fare results per monitor and across the latest sweep when running the local live-pricing server.
 - Static hosting falls back to direct Google Flights search links when live pricing is unavailable.

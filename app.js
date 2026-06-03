@@ -134,6 +134,7 @@ const airlineList = document.querySelector("#airlineList");
 const airlineCount = document.querySelector("#airlineCount");
 const tripMinInput = document.querySelector("#tripMin");
 const tripMaxInput = document.querySelector("#tripMax");
+const maxStopsInput = document.querySelector("#maxStops");
 const startFromInput = document.querySelector("#startFrom");
 const startToInput = document.querySelector("#startTo");
 const maxTripLengthButton = document.querySelector("#maxTripLengthButton");
@@ -356,6 +357,7 @@ function monitorConfigSignature(monitor) {
     ...config,
     pairs: config.pairs.slice().sort((a, b) => `${a.origin}-${a.destination}`.localeCompare(`${b.origin}-${b.destination}`)),
     excludedAirlines: config.excludedAirlines.slice().sort(),
+    maxStops: config.maxStops,
   });
 }
 
@@ -382,7 +384,17 @@ function normalizeMonitorShape(monitor) {
   const maxBound = TravelWindowLogic.maxTripLengthForRange(monitor.startFrom, monitor.startTo);
   monitor.tripMin = Math.min(Math.max(0, Math.trunc(Number(monitor.tripMin) || 0)), maxBound);
   monitor.tripMax = Math.min(Math.max(0, Math.trunc(Number(monitor.tripMax) || 0)), maxBound);
+  monitor.maxStops = normalizeMaxStops(monitor.maxStops);
   return monitor;
+}
+
+function normalizeMaxStops(value) {
+  const clean = String(value ?? "0").trim().toUpperCase();
+  if (clean === "ANY") return "ANY";
+  if (["0", "1", "2"].includes(clean)) return clean;
+  const numeric = Number(clean);
+  if (Number.isFinite(numeric)) return String(Math.min(Math.max(0, Math.trunc(numeric)), 2));
+  return "0";
 }
 
 function coerceDateInput(value, fallback) {
@@ -443,6 +455,7 @@ function shareableMonitorConfig(monitor) {
     startTo: monitor.startTo,
     tripMin: monitor.tripMin,
     tripMax: monitor.tripMax,
+    maxStops: monitor.maxStops,
     excludedAirlines: monitor.excludedAirlines,
   };
 }
@@ -456,6 +469,7 @@ function sharePayloadFromMonitors(monitors) {
       monitor.startTo,
       monitor.tripMin,
       monitor.tripMax,
+      monitor.maxStops,
       monitor.excludedAirlines,
     ]),
   };
@@ -464,16 +478,21 @@ function sharePayloadFromMonitors(monitors) {
 function monitorsFromSharePayload(payload) {
   if (Array.isArray(payload?.monitors)) return payload.monitors;
   if (payload?.v !== 2 || !Array.isArray(payload.m)) return null;
-  return payload.m.map(([pairs, startFrom, startTo, tripMin, tripMax, excludedAirlines]) => ({
-    pairs: Array.isArray(pairs)
-      ? pairs.map(([origin, destination]) => ({ origin, destination }))
-      : [],
-    startFrom,
-    startTo,
-    tripMin,
-    tripMax,
-    excludedAirlines: Array.isArray(excludedAirlines) ? excludedAirlines : [],
-  }));
+  return payload.m.map(([pairs, startFrom, startTo, tripMin, tripMax, sixth, seventh]) => {
+    const hasMaxStops = !Array.isArray(sixth);
+    const excludedAirlines = hasMaxStops ? seventh : sixth;
+    return {
+      pairs: Array.isArray(pairs)
+        ? pairs.map(([origin, destination]) => ({ origin, destination }))
+        : [],
+      startFrom,
+      startTo,
+      tripMin,
+      tripMax,
+      maxStops: hasMaxStops ? sixth : "0",
+      excludedAirlines: Array.isArray(excludedAirlines) ? excludedAirlines : [],
+    };
+  });
 }
 
 async function shareMonitors() {
@@ -923,6 +942,7 @@ function fillMonitorForm(monitor) {
   startToInput.value = monitor.startTo;
   tripMinInput.value = monitor.tripMin;
   tripMaxInput.value = monitor.tripMax;
+  maxStopsInput.value = monitor.maxStops;
   renderDraftPairs();
   renderDraftExcludedAirlines();
   clampTripLengthsToDateBounds();
@@ -935,6 +955,7 @@ function readMonitorForm() {
   const startTo = startToInput.value;
   const tripMin = Number(tripMinInput.value);
   const tripMax = Number(tripMaxInput.value);
+  const maxStops = normalizeMaxStops(maxStopsInput.value);
   const excludedAirlines = getExcludedAirlinesFromForm();
 
   if (!pairs.length) {
@@ -956,6 +977,7 @@ function readMonitorForm() {
     startTo,
     tripMin,
     tripMax,
+    maxStops,
     excludedAirlines,
   };
 }
@@ -1232,6 +1254,7 @@ function normalizeDeal(deal) {
     price: hasPrice(deal.price) ? Number(deal.price) : null,
     currency: deal.currency || "USD",
     airlineName: deal.airlineName || deal.airlineCode || "Check Google Flights for airline",
+    maxStops: normalizeMaxStops(deal.maxStops),
     sourceName: deal.sourceName || "Google Flights",
     sourceUrl: deal.sourceUrl || buildGoogleFlightsUrlFromDeal(deal),
     provider: deal.provider || "client",
@@ -1246,6 +1269,7 @@ function buildClientSearchCandidates(monitor) {
       price: null,
       currency: "USD",
       airlineName: "Check Google Flights for airline",
+      maxStops: monitor.maxStops,
       sourceName: "Google Flights",
       sourceUrl: buildGoogleFlightsUrl(trip.origin, trip.destination, trip.depart, trip.returnDate),
       provider: "client",
@@ -1518,7 +1542,7 @@ function renderMonitors() {
       <header>
         <div>
           ${monitorPairPillsHtml(monitor)}
-          <div class="monitor-meta">${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatPairCount(monitor.pairs.length)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</div>
+          <div class="monitor-meta">${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatStops(monitor.maxStops)} · ${formatPairCount(monitor.pairs.length)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</div>
         </div>
         <div class="monitor-header-actions">
           <details class="monitor-menu">
@@ -1617,7 +1641,7 @@ function renderShareImportOverlay() {
     row.className = "share-import-row";
     row.innerHTML = `
       <strong>${formatMonitorRoutes(monitor)}</strong>
-      <span>${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatExcludedAirlines(monitor.excludedAirlines)}</span>
+      <span>${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatStops(monitor.maxStops)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</span>
     `;
     preview.appendChild(row);
   });
@@ -1756,6 +1780,14 @@ function formatExcludedAirlines(codes) {
   const count = Array.isArray(codes) ? codes.length : 0;
   if (!count) return "no airline exclusions";
   return `${count} airline ${count === 1 ? "excluded" : "exclusions"}`;
+}
+
+function formatStops(value) {
+  const maxStops = normalizeMaxStops(value);
+  if (maxStops === "ANY") return "any stops";
+  if (maxStops === "0") return "nonstop";
+  if (maxStops === "1") return "1 stop max";
+  return "2 stops max";
 }
 
 function getAirline(code) {

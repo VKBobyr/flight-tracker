@@ -160,6 +160,7 @@ def normalize_monitor(monitor: dict) -> dict:
     for code in (monitor.get("excludedAirlines") or [])
     if clean_airline_code(code)
   })
+  max_stops = normalize_max_stops(monitor.get("maxStops", 0))
 
   return {
     "pairs": pairs,
@@ -167,6 +168,7 @@ def normalize_monitor(monitor: dict) -> dict:
     "start_to": start_to.isoformat(),
     "trip_min": trip_min,
     "trip_max": trip_max,
+    "max_stops": max_stops,
     "excluded_airlines": excluded_airlines,
     "combination_count": count_combinations(pairs, start_from, start_to, trip_min, trip_max),
   }
@@ -191,7 +193,7 @@ def search_flexible_dates(pair: dict, monitor: dict, duration: int) -> tuple[lis
     trip_type=trip_type,
     passenger_info=PassengerInfo(adults=1),
     flight_segments=segments,
-    stops=parse_max_stops("ANY"),
+    stops=parse_max_stops(monitor["max_stops"]),
     seat_type=parse_cabin_class("ECONOMY"),
     airlines_exclude=parse_airlines(monitor["excluded_airlines"]),
     from_date=monitor["start_from"],
@@ -204,6 +206,8 @@ def search_flexible_dates(pair: dict, monitor: dict, duration: int) -> tuple[lis
     for result in results
     if date_price_matches(result, monitor, duration)
   ]
+  for deal in deals:
+    deal["maxStops"] = monitor["max_stops"]
   write_cache(search_query_cache, cache_key, deals, SWEEP_CACHE_TTL_SECONDS)
   return deals, 1
 
@@ -230,7 +234,7 @@ def search_same_day_flights(pair: dict, monitor: dict) -> tuple[list[dict], int]
       trip_type=trip_type,
       passenger_info=PassengerInfo(adults=1),
       flight_segments=segments,
-      stops=parse_max_stops("ANY"),
+      stops=parse_max_stops(monitor["max_stops"]),
       seat_type=parse_cabin_class("ECONOMY"),
       airlines_exclude=parse_airlines(monitor["excluded_airlines"]),
       sort_by=SortBy.CHEAPEST,
@@ -242,6 +246,8 @@ def search_same_day_flights(pair: dict, monitor: dict) -> tuple[list[dict], int]
       for deal in (flight_result_to_deal(pair, result, depart.isoformat(), depart.isoformat(), excluded) for result in results)
       if deal
     )
+  for deal in deals:
+    deal["maxStops"] = monitor["max_stops"]
   write_cache(search_query_cache, cache_key, deals, SWEEP_CACHE_TTL_SECONDS)
   return deals, query_count
 
@@ -299,12 +305,13 @@ def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], 
   enriched = []
   query_count = 0
   excluded = set(monitor["excluded_airlines"])
+  max_stops = monitor["max_stops"]
   for deal in deals:
     if deal.get("airlineName"):
       enriched.append(deal)
       continue
     try:
-      next_deal, used_query = enrich_single_deal_airline(deal, excluded)
+      next_deal, used_query = enrich_single_deal_airline(deal, excluded, max_stops)
       enriched.append(next_deal)
       query_count += used_query
     except Exception:
@@ -313,8 +320,8 @@ def enrich_deal_airlines(deals: list[dict], monitor: dict) -> tuple[list[dict], 
   return enriched, query_count
 
 
-def enrich_single_deal_airline(deal: dict, excluded: set[str]) -> tuple[dict, int]:
-  cache_key = flight_detail_cache_key(deal, excluded)
+def enrich_single_deal_airline(deal: dict, excluded: set[str], max_stops: str) -> tuple[dict, int]:
+  cache_key = flight_detail_cache_key(deal, excluded, max_stops)
   cached = read_cache(flight_detail_cache, cache_key)
   if cached:
     deal.update(cached)
@@ -332,7 +339,7 @@ def enrich_single_deal_airline(deal: dict, excluded: set[str]) -> tuple[dict, in
     trip_type=trip_type,
     passenger_info=PassengerInfo(adults=1),
     flight_segments=segments,
-    stops=parse_max_stops("ANY"),
+    stops=parse_max_stops(max_stops),
     seat_type=parse_cabin_class("ECONOMY"),
     airlines_exclude=parse_airlines(list(excluded)),
     sort_by=SortBy.CHEAPEST,
@@ -419,6 +426,17 @@ def clean_airline_code(value: object) -> str:
   return candidate if 2 <= len(candidate) <= 3 and candidate.isalnum() else ""
 
 
+def normalize_max_stops(value: object) -> str:
+  clean = str(value if value is not None else "0").strip().upper()
+  if clean == "ANY":
+    return "ANY"
+  try:
+    stops = int(float(clean))
+  except Exception:
+    return "0"
+  return str(min(max(0, stops), 2))
+
+
 def clamp_days(value: object, max_days: int) -> int:
   try:
     parsed = int(float(value))
@@ -477,16 +495,18 @@ def sweep_cache_key(normalized: dict) -> str:
     "start_to": normalized["start_to"],
     "trip_min": normalized["trip_min"],
     "trip_max": normalized["trip_max"],
+    "max_stops": normalized["max_stops"],
     "excluded_airlines": sorted(normalized["excluded_airlines"]),
   }, sort_keys=True, separators=(",", ":"))
 
 
-def flight_detail_cache_key(deal: dict, excluded: set[str]) -> str:
+def flight_detail_cache_key(deal: dict, excluded: set[str], max_stops: str) -> str:
   return json.dumps({
     "origin": deal.get("origin"),
     "destination": deal.get("destination"),
     "depart": deal.get("depart"),
     "returnDate": deal.get("returnDate"),
+    "max_stops": max_stops,
     "excluded": sorted(excluded),
   }, sort_keys=True, separators=(",", ":"))
 
@@ -499,6 +519,7 @@ def search_query_cache_key(pair: dict, monitor: dict, duration: int, search_type
     "start_from": monitor.get("start_from"),
     "start_to": monitor.get("start_to"),
     "duration": duration,
+    "max_stops": monitor.get("max_stops"),
     "excluded_airlines": sorted(monitor.get("excluded_airlines") or []),
   }, sort_keys=True, separators=(",", ":"))
 
@@ -573,6 +594,7 @@ def shared_preview_context(encoded: str | None) -> dict:
     title = f"Flight Tracker: {title_routes}"
     date_summary = summarize_monitor_dates(monitors)
     exclusions = sorted({code for monitor in monitors for code in monitor.get("excludedAirlines", [])})
+    stop_rules = sorted({format_stops(monitor.get("maxStops", 0)) for monitor in monitors})
     description_parts = [
       f"{monitor_count} {plural(monitor_count, 'monitor')}",
       f"{pair_count} airport {plural(pair_count, 'pair')}",
@@ -580,6 +602,8 @@ def shared_preview_context(encoded: str | None) -> dict:
     ]
     if exclusions:
       description_parts.append(f"{len(exclusions)} airline {plural(len(exclusions), 'exclusion')}")
+    if len(stop_rules) == 1:
+      description_parts.append(stop_rules[0])
     description = " • ".join(part for part in description_parts if part)
   else:
     title = "Flight Tracker"
@@ -627,6 +651,8 @@ def normalize_share_payload(payload: object) -> list[dict]:
 def monitor_from_share_value(value: object) -> dict:
   if isinstance(value, list):
     pair_values = value[0] if len(value) > 0 else []
+    has_max_stops = len(value) > 5 and not isinstance(value[5], list)
+    excluded_airlines = value[6] if has_max_stops and len(value) > 6 else value[5] if len(value) > 5 else []
     pairs = [
       {"origin": clean_iata(pair[0] if len(pair) > 0 else ""), "destination": clean_iata(pair[1] if len(pair) > 1 else "")}
       for pair in pair_values
@@ -638,7 +664,8 @@ def monitor_from_share_value(value: object) -> dict:
       "startTo": value[2] if len(value) > 2 else "",
       "tripMin": value[3] if len(value) > 3 else 0,
       "tripMax": value[4] if len(value) > 4 else 0,
-      "excludedAirlines": [clean_airline_code(code) for code in (value[5] if len(value) > 5 and isinstance(value[5], list) else [])],
+      "maxStops": normalize_max_stops(value[5] if has_max_stops else 0),
+      "excludedAirlines": [clean_airline_code(code) for code in (excluded_airlines if isinstance(excluded_airlines, list) else [])],
     }
   elif isinstance(value, dict):
     monitor = {
@@ -651,6 +678,7 @@ def monitor_from_share_value(value: object) -> dict:
       "startTo": value.get("startTo", ""),
       "tripMin": value.get("tripMin", 0),
       "tripMax": value.get("tripMax", 0),
+      "maxStops": normalize_max_stops(value.get("maxStops", 0)),
       "excludedAirlines": [clean_airline_code(code) for code in value.get("excludedAirlines", [])],
     }
   else:
@@ -658,6 +686,7 @@ def monitor_from_share_value(value: object) -> dict:
 
   monitor["pairs"] = unique_pair_dicts(monitor["pairs"])
   monitor["excludedAirlines"] = sorted({code for code in monitor["excludedAirlines"] if code})
+  monitor["maxStops"] = normalize_max_stops(monitor.get("maxStops", 0))
   return monitor
 
 
@@ -704,6 +733,17 @@ def safe_int(value: object) -> int:
 
 def format_short_date(value: date) -> str:
   return value.strftime("%b %-d") if os.name != "nt" else value.strftime("%b %#d")
+
+
+def format_stops(value: object) -> str:
+  max_stops = normalize_max_stops(value)
+  if max_stops == "ANY":
+    return "any stops"
+  if max_stops == "0":
+    return "nonstop"
+  if max_stops == "1":
+    return "1 stop max"
+  return "2 stops max"
 
 
 def plural(count: int, singular: str) -> str:

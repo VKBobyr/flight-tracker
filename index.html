@@ -146,6 +146,16 @@
                   <button class="max-length-button" id="maxTripLengthButton" type="button">Max</button>
                 </div>
               </fieldset>
+
+              <label class="field">
+                <span>Max stops</span>
+                <select id="maxStops" required>
+                  <option value="0" selected>Nonstop only</option>
+                  <option value="1">1 stop or fewer</option>
+                  <option value="2">2 stops or fewer</option>
+                  <option value="ANY">Any number of stops</option>
+                </select>
+              </label>
             </section>
 
             <section class="form-section" aria-label="Exclusions">

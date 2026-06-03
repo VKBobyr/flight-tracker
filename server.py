@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve Flight Tracker locally and provide live priced sweeps through Fli."""
+"""Serve Farely locally and provide live priced sweeps through Fli."""
 
 from __future__ import annotations
 
@@ -658,7 +658,7 @@ def shared_preview_context(encoded: str | None) -> dict:
     title_routes = ", ".join(route_labels[:2])
     if pair_count > 2:
       title_routes = f"{title_routes} + {pair_count - 2} more"
-    title = f"Flight Tracker: {title_routes}"
+    title = f"Farely: {title_routes}"
     date_summary = summarize_monitor_dates(monitors)
     exclusions = sorted({code for monitor in monitors for code in monitor.get("excludedAirlines", [])})
     stop_rules = sorted({format_stops(monitor.get("maxStops", 0)) for monitor in monitors})
@@ -673,8 +673,8 @@ def shared_preview_context(encoded: str | None) -> dict:
       description_parts.append(stop_rules[0])
     description = " • ".join(part for part in description_parts if part)
   else:
-    title = "Flight Tracker"
-    description = "Build flexible flight monitors and sweep Google Flights for direct date-window searches."
+    title = "Farely"
+    description = "Build flexible fare monitors and sweep Google Flights for direct date-window searches."
 
   return {
     "monitors": monitors,
@@ -907,7 +907,7 @@ def preview_svg(query: dict[str, list[str]]) -> bytes:
     <rect x="64" y="62" width="112" height="112" rx="31" fill="url(#logo)" filter="url(#shadow)"/>
     <path d="M92 128 C122 126 142 106 153 86 C158 78 171 78 174 86 C181 103 154 135 128 144 C113 151 95 149 84 139 C80 135 84 128 92 128Z" fill="#fff"/>
     <path d="M80 142 C112 160 152 156 184 136" fill="none" stroke="#fff" stroke-opacity="0.56" stroke-width="16" stroke-linecap="round"/>
-    <text x="202" y="96" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="820" letter-spacing="4" fill="#075ccf">FLIGHT TRACKER</text>
+    <text x="202" y="96" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="820" letter-spacing="4" fill="#075ccf">FARELY</text>
     <text x="202" y="152" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="48" font-weight="850" fill="#101923">{title}</text>
     <text x="70" y="244" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="31" font-weight="650" fill="#5c718d">{description}</text>
     <rect x="64" y="286" width="820" height="280" rx="36" fill="rgba(255,255,255,0.46)" stroke="rgba(255,255,255,0.74)" filter="url(#shadow)"/>
@@ -999,13 +999,13 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-  parser = argparse.ArgumentParser(description="Run Flight Tracker with the live fare sweep endpoint.")
+  parser = argparse.ArgumentParser(description="Run Farely with the live fare sweep endpoint.")
   parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
   parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8001")))
   args = parser.parse_args()
 
   server = ThreadingHTTPServer((args.host, args.port), FlightTrackerHandler)
-  print(f"Flight Tracker running at http://{args.host}:{args.port}/")
+  print(f"Farely running at http://{args.host}:{args.port}/")
   server.serve_forever()
 
 

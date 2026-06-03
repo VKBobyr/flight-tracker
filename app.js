@@ -1463,7 +1463,7 @@ function renderFareExplorer(monitor, deals) {
   const view = getFareView(monitor.id);
   reconcileFareView(view, entries);
   const filteredEntries = filterFareEntries(entries, view);
-  const sortedEntries = sortFareEntries(filteredEntries, view.priceSort);
+  const sortedEntries = sortFareEntries(filteredEntries, view.sort);
 
   explorer.appendChild(renderFareControls(monitor.id, entries, view, filteredEntries.length));
   const table = document.createElement("div");
@@ -1479,12 +1479,14 @@ function renderFareExplorer(monitor, deals) {
 
 function getFareView(monitorId) {
   if (!fareViewState.has(monitorId)) {
-    fareViewState.set(monitorId, { priceSort: "asc", routes: new Set(), lengths: new Set(), airlines: new Set() });
+    fareViewState.set(monitorId, { sort: { column: "price", direction: "asc" }, routes: new Set(), lengths: new Set(), airlines: new Set() });
   }
   return fareViewState.get(monitorId);
 }
 
 function reconcileFareView(view, entries) {
+  if (!view.sort) view.sort = { column: "price", direction: view.priceSort || "asc" };
+  delete view.priceSort;
   if (!view.routes) view.routes = new Set();
   if (!view.lengths) view.lengths = new Set();
   if (!view.airlines) view.airlines = new Set();
@@ -1550,7 +1552,7 @@ function renderFareControls(monitorId, entries, view, visibleCount) {
     });
   });
   controls.querySelector("[data-fare-reset]").addEventListener("click", () => {
-    view.priceSort = "asc";
+    view.sort = { column: "price", direction: "asc" };
     view.routes.clear();
     view.lengths.clear();
     view.airlines.clear();
@@ -1602,9 +1604,14 @@ function filterFareEntries(entries, view) {
   ));
 }
 
-function sortFareEntries(entries, priceSort = "asc") {
-  const direction = priceSort === "desc" ? -1 : 1;
-  return entries.slice().sort((a, b) => direction * compareFareEntryPrice(a, b));
+function sortFareEntries(entries, sort = { column: "price", direction: "asc" }) {
+  const column = sort?.column || "price";
+  const direction = sort?.direction === "desc" ? -1 : 1;
+  return entries.slice().sort((a, b) => {
+    const primary = compareFareEntryColumn(a, b, column);
+    if (primary) return direction * primary;
+    return compareFareEntryTiebreakers(a, b, column);
+  });
 }
 
 function compareFareEntryPrice(a, b) {
@@ -1614,16 +1621,45 @@ function compareFareEntryPrice(a, b) {
     || String(a.route || "").localeCompare(String(b.route || ""));
 }
 
+function compareFareEntryColumn(a, b, column) {
+  if (column === "start") return String(a.depart || "").localeCompare(String(b.depart || ""));
+  if (column === "end") return String(a.returnDate || "").localeCompare(String(b.returnDate || ""));
+  if (column === "length") return Number(a.length || 0) - Number(b.length || 0);
+  return Number(a.price || 0) - Number(b.price || 0);
+}
+
+function compareFareEntryTiebreakers(a, b, column) {
+  if (column !== "start") {
+    const start = String(a.depart || "").localeCompare(String(b.depart || ""));
+    if (start) return start;
+  }
+  if (column !== "price") {
+    const price = Number(a.price || 0) - Number(b.price || 0);
+    if (price) return price;
+  }
+  if (column !== "length") {
+    const length = Number(a.length || 0) - Number(b.length || 0);
+    if (length) return length;
+  }
+  if (column !== "end") {
+    const end = String(a.returnDate || "").localeCompare(String(b.returnDate || ""));
+    if (end) return end;
+  }
+  return String(a.route || "").localeCompare(String(b.route || ""));
+}
+
 function renderFareTable(monitorId, entries, view) {
   const wrapper = document.createElement("div");
   wrapper.className = "fare-table-card";
   wrapper.innerHTML = `
     <div class="fare-table-head">
       <span>Trip</span>
-      <span>Dates</span>
+      ${renderSortHeader("start", "Start", view)}
+      ${renderSortHeader("end", "End", view)}
+      ${renderSortHeader("length", "Days", view)}
       <span>Airline</span>
       <span>Stops</span>
-      <button class="fare-price-sort" type="button" data-price-sort aria-label="Sort by price">Price ${view.priceSort === "desc" ? "↓" : "↑"}</button>
+      ${renderSortHeader("price", "Price", view)}
       <span aria-hidden="true"></span>
     </div>
   `;
@@ -1631,12 +1667,23 @@ function renderFareTable(monitorId, entries, view) {
   rows.className = "fare-table-body";
   entries.forEach((entry) => rows.appendChild(renderFareTableRow(entry)));
   wrapper.appendChild(rows);
-  wrapper.querySelector("[data-price-sort]").addEventListener("click", () => {
-    const viewState = getFareView(monitorId);
-    viewState.priceSort = viewState.priceSort === "desc" ? "asc" : "desc";
-    render();
+  wrapper.querySelectorAll("[data-sort-column]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const column = button.dataset.sortColumn;
+      const viewState = getFareView(monitorId);
+      const current = viewState.sort || { column: "price", direction: "asc" };
+      const direction = current.column === column && current.direction === "asc" ? "desc" : "asc";
+      viewState.sort = { column, direction };
+      render();
+    });
   });
   return wrapper;
+}
+
+function renderSortHeader(column, label, view) {
+  const sort = view.sort || { column: "price", direction: "asc" };
+  const indicator = sort.column === column ? (sort.direction === "desc" ? "↓" : "↑") : "";
+  return `<button class="fare-sort-header" type="button" data-sort-column="${column}" aria-label="Sort by ${label.toLowerCase()}">${label}${indicator ? ` ${indicator}` : ""}</button>`;
 }
 
 function renderFareTableRow(entry) {
@@ -1648,7 +1695,9 @@ function renderFareTableRow(entry) {
   row.title = "Open this trip on Google Flights";
   row.innerHTML = `
     <strong>${escapeHtml(entry.route)}</strong>
-    <span>${formatDate(entry.depart)}-${formatDate(entry.returnDate)} · ${formatDayCount(entry.length)}</span>
+    <span>${formatDate(entry.depart)}</span>
+    <span>${formatDate(entry.returnDate)}</span>
+    <span>${formatDayCount(entry.length)}</span>
     <span>${entry.airlineDisplay ? escapeHtml(entry.airlineDisplay) : "&mdash;"}</span>
     <span>${formatDealStops(entry)}</span>
     <strong class="fare-row-price">${formatMoney(entry.price)}</strong>

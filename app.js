@@ -175,6 +175,7 @@ document.addEventListener("click", (event) => {
   document.querySelectorAll(".monitor-menu[open]").forEach((menu) => {
     if (!menu.contains(event.target)) menu.removeAttribute("open");
   });
+  closeFareFiltersOnOutsideClick(event);
 });
 resetButton.addEventListener("click", () => {
   setTimeout(() => {
@@ -1439,46 +1440,11 @@ function renderLastSweepAt() {
   lastSweepAt.textContent = state.lastSweepAt ? `Last found ${formatDateTime(state.lastSweepAt)}` : "No fares yet";
 }
 
-function fareBucketLabel(index) {
-  return ["Lowest found", "Next lowest", "Third lowest", "Fourth lowest"][index] || "Also available";
-}
-
 function normalizedFareOptions(deal) {
   const options = Array.isArray(deal.fareOptions) && deal.fareOptions.length
     ? deal.fareOptions
     : fareOptionsFromLegacyDeal(deal);
   return options.map(normalizeRelatedDeal).filter((option) => option.origin || option.route);
-}
-
-function formatFareGroupRoute(options, deal) {
-  const destinations = uniqueValues(options.map((option) => option.destination || destinationFromRoute(option.route)).filter(Boolean));
-  const origins = uniqueValues(options.map((option) => option.origin || originFromRoute(option.route)).filter(Boolean));
-  if (origins.length && destinations.length === 1) {
-    return `${origins.join(" / ")} → ${destinations[0]}`;
-  }
-  if (origins.length === 1 && destinations.length) {
-    return `${origins[0]} → ${destinations.join(" / ")}`;
-  }
-  return deal.route || "Flexible routes";
-}
-
-function formatFareGroupAirline(options, deal) {
-  const airlines = uniqueValues(options.map((option) => knownAirlineName(option.airlineName, option.airlineCode)).filter(Boolean));
-  if (airlines.length === 1) return airlines[0];
-  if (airlines.length > 1) return `${formatInteger(airlines.length)} airlines`;
-  const bucketAirline = knownAirlineName(deal.airlineName, deal.airlineCode);
-  if (bucketAirline) return bucketAirline;
-  const count = Math.max(options.length, Number(deal.fareOptionTotal) || 0);
-  return count > 1 ? `${formatInteger(count)} fare options` : "Fare option";
-}
-
-function formatFareOptionMeta(option) {
-  return [
-    `${formatDate(option.depart)}-${formatDate(option.returnDate)}`,
-    formatDayCount(option.length),
-    knownAirlineName(option.airlineName, option.airlineCode),
-    formatDealStops(option),
-  ].filter(Boolean).join(" · ");
 }
 
 function renderFareExplorer(monitor, deals) {
@@ -1494,8 +1460,7 @@ function renderFareExplorer(monitor, deals) {
   const view = getFareView(monitor.id);
   reconcileFareView(view, entries);
   const filteredEntries = filterFareEntries(entries, view);
-  const sortedEntries = sortFareEntries(filteredEntries, view.sort);
-  const groupedEntries = groupFareEntriesByPrice(sortedEntries);
+  const sortedEntries = sortFareEntries(filteredEntries, view.priceSort);
 
   explorer.appendChild(renderFareControls(monitor.id, entries, view, filteredEntries.length));
   const table = document.createElement("div");
@@ -1503,7 +1468,7 @@ function renderFareExplorer(monitor, deals) {
   if (!filteredEntries.length) {
     table.innerHTML = `<p class="empty-state">No fares match these filters.</p>`;
   } else {
-    groupedEntries.forEach((group, index) => table.appendChild(renderFarePriceGroup(group, index)));
+    table.appendChild(renderFareTable(monitor.id, sortedEntries, view));
   }
   explorer.appendChild(table);
   return explorer;
@@ -1511,7 +1476,7 @@ function renderFareExplorer(monitor, deals) {
 
 function getFareView(monitorId) {
   if (!fareViewState.has(monitorId)) {
-    fareViewState.set(monitorId, { sort: "price", lengths: new Set(), airlines: new Set() });
+    fareViewState.set(monitorId, { priceSort: "asc", lengths: new Set(), airlines: new Set() });
   }
   return fareViewState.get(monitorId);
 }
@@ -1553,24 +1518,10 @@ function renderFareControls(monitorId, entries, view, visibleCount) {
   const airlines = uniqueValues(entries.map((entry) => entry.airlineFilter).filter(Boolean)).sort();
   controls.innerHTML = `
     <div class="fare-count">${formatInteger(visibleCount)} of ${formatInteger(entries.length)} fares</div>
-    <label class="fare-sort-pill">
-      <span>Sort</span>
-      <select data-fare-sort>
-        <option value="price">Price</option>
-        <option value="depart">Date</option>
-        <option value="length">Trip length</option>
-        <option value="route">Route</option>
-      </select>
-    </label>
     ${renderFilterDropdownHtml("Trip length", "lengths", lengths.map((length) => ({ value: String(length), label: formatDayCount(length) })), view.lengths)}
     ${renderFilterDropdownHtml("Airlines", "airlines", airlines.map((airline) => ({ value: airline, label: airline })), view.airlines)}
     <button class="fare-reset" type="button" data-fare-reset>Reset</button>
   `;
-  controls.querySelector("[data-fare-sort]").value = view.sort;
-  controls.querySelector("[data-fare-sort]").addEventListener("change", (event) => {
-    view.sort = event.target.value;
-    render();
-  });
   controls.querySelectorAll("[data-filter-kind]").forEach((input) => {
     input.addEventListener("change", () => {
       const targetSet = view[input.dataset.filterKind];
@@ -1580,12 +1531,19 @@ function renderFareControls(monitorId, entries, view, visibleCount) {
     });
   });
   controls.querySelector("[data-fare-reset]").addEventListener("click", () => {
-    view.sort = "price";
+    view.priceSort = "asc";
     view.lengths.clear();
     view.airlines.clear();
     render();
   });
   return controls;
+}
+
+function closeFareFiltersOnOutsideClick(event) {
+  if (event.target.closest(".fare-filter")) return;
+  document.querySelectorAll(".fare-filter[open]").forEach((filter) => {
+    filter.open = false;
+  });
 }
 
 function renderFilterDropdownHtml(label, kind, options, selected) {
@@ -1613,13 +1571,9 @@ function filterFareEntries(entries, view) {
   ));
 }
 
-function sortFareEntries(entries, sort) {
-  return entries.slice().sort((a, b) => {
-    if (sort === "depart") return String(a.depart || "").localeCompare(String(b.depart || "")) || compareFareEntryPrice(a, b);
-    if (sort === "length") return Number(a.length || 0) - Number(b.length || 0) || compareFareEntryPrice(a, b);
-    if (sort === "route") return String(a.route || "").localeCompare(String(b.route || "")) || compareFareEntryPrice(a, b);
-    return compareFareEntryPrice(a, b);
-  });
+function sortFareEntries(entries, priceSort = "asc") {
+  const direction = priceSort === "desc" ? -1 : 1;
+  return entries.slice().sort((a, b) => direction * compareFareEntryPrice(a, b));
 }
 
 function compareFareEntryPrice(a, b) {
@@ -1629,41 +1583,29 @@ function compareFareEntryPrice(a, b) {
     || String(a.route || "").localeCompare(String(b.route || ""));
 }
 
-function groupFareEntriesByPrice(entries) {
-  return groupDeals(entries, (entry) => String(Number(entry.price)))
-    .sort((a, b) => Number(a.key) - Number(b.key))
-    .map((group) => ({
-      price: Number(group.key),
-      bucketIndex: Math.min(...group.deals.map((entry) => Number(entry.bucketIndex)).filter((index) => Number.isFinite(index))),
-      entries: group.deals,
-    }));
-}
-
-function renderFarePriceGroup(group, index) {
-  const section = document.createElement("section");
-  section.className = "fare-price-group";
-  const label = fareBucketLabel(Number.isFinite(group.bucketIndex) ? group.bucketIndex : index);
-  section.innerHTML = `
-    <header>
-      <div>
-        <span>${label}</span>
-        <strong>${formatMoney(group.price)}</strong>
-      </div>
-      <p>${formatInteger(group.entries.length)} ${group.entries.length === 1 ? "fare" : "fares"} at this price</p>
-    </header>
-    <div class="fare-table-head" aria-hidden="true">
+function renderFareTable(monitorId, entries, view) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "fare-table-card";
+  wrapper.innerHTML = `
+    <div class="fare-table-head">
       <span>Trip</span>
       <span>Dates</span>
       <span>Airline</span>
       <span>Stops</span>
-      <span></span>
+      <button class="fare-price-sort" type="button" data-price-sort aria-label="Sort by price">Price ${view.priceSort === "desc" ? "↓" : "↑"}</button>
+      <span aria-hidden="true"></span>
     </div>
   `;
   const rows = document.createElement("div");
   rows.className = "fare-table-body";
-  group.entries.forEach((entry) => rows.appendChild(renderFareTableRow(entry)));
-  section.appendChild(rows);
-  return section;
+  entries.forEach((entry) => rows.appendChild(renderFareTableRow(entry)));
+  wrapper.appendChild(rows);
+  wrapper.querySelector("[data-price-sort]").addEventListener("click", () => {
+    const viewState = getFareView(monitorId);
+    viewState.priceSort = viewState.priceSort === "desc" ? "asc" : "desc";
+    render();
+  });
+  return wrapper;
 }
 
 function renderFareTableRow(entry) {
@@ -1678,41 +1620,10 @@ function renderFareTableRow(entry) {
     <span>${formatDate(entry.depart)}-${formatDate(entry.returnDate)} · ${formatDayCount(entry.length)}</span>
     <span>${escapeHtml(entry.airlineDisplay)}</span>
     <span>${formatDealStops(entry)}</span>
-    <em>Google Flights</em>
+    <strong class="fare-row-price">${formatMoney(entry.price)}</strong>
+    <em aria-label="Open in Google Flights">↗</em>
   `;
   return row;
-}
-
-function formatFareGroupDepartures(options, deal) {
-  const departs = uniqueValues(options.map((option) => option.depart).filter(Boolean)).sort();
-  if (!departs.length) return formatDate(deal.depart);
-  if (departs.length === 1) return `${formatDate(departs[0])} departure`;
-  return `${formatDate(departs[0])}-${formatDate(departs[departs.length - 1])} departures`;
-}
-
-function formatFareGroupDurations(options, deal) {
-  const lengths = uniqueValues(options.map((option) => Number(option.length)).filter((length) => Number.isFinite(length))).sort((a, b) => a - b);
-  if (!lengths.length) return formatDayCount(deal.length);
-  if (lengths.length === 1) return formatDayCount(lengths[0]);
-  return `${formatInteger(lengths[0])}-${formatInteger(lengths[lengths.length - 1])} days`;
-}
-
-function formatFareGroupStops(options, deal) {
-  const labels = uniqueValues(options.map(formatDealStops).filter(Boolean));
-  if (labels.length === 1) return labels[0];
-  return "Mixed stops";
-}
-
-function originFromRoute(route) {
-  return String(route || "").split(" → ")[0] || "";
-}
-
-function destinationFromRoute(route) {
-  return String(route || "").split(" → ")[1] || "";
-}
-
-function formatDealSourceName(deal) {
-  return deal.sourceName || "Google Flights";
 }
 
 function normalizeAirlineName(name, code) {

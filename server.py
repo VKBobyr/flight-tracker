@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import concurrent.futures
 import html
 import io
 import json
@@ -45,6 +46,7 @@ MAX_BODY_BYTES = 2 * 1024 * 1024
 TOP_DEAL_LIMIT = 4
 MAX_ENRICHED_FARE_OPTIONS_PER_BUCKET = 5
 MAX_FLI_QUERIES_PER_MONITOR = 80
+MAX_FLI_CONCURRENT_QUERIES = max(1, int(os.environ.get("MAX_FLI_CONCURRENT_QUERIES", "2")))
 MAX_PAIRS_PER_MONITOR = 12
 MAX_EXCLUDED_AIRLINES = 24
 MAX_SHARE_PARAM_CHARS = 12000
@@ -100,20 +102,32 @@ def sweep_monitor(monitor: dict) -> dict:
   provider_errors: list[str] = []
   query_count = 0
 
-  for pair in normalized["pairs"]:
-    for duration in range(normalized["trip_min"], normalized["trip_max"] + 1):
-      if query_count >= MAX_FLI_QUERIES_PER_MONITOR:
-        provider_errors.append(f"Stopped after {MAX_FLI_QUERIES_PER_MONITOR} live fare queries to avoid overloading the provider.")
-        break
+  search_jobs, skipped_jobs = build_search_jobs(normalized)
+  if skipped_jobs:
+    provider_errors.append(f"Skipped {skipped_jobs} fare {pluralize(skipped_jobs, 'search', 'searches')} to stay under the {MAX_FLI_QUERIES_PER_MONITOR}-query limit.")
+
+  if MAX_FLI_CONCURRENT_QUERIES <= 1 or len(search_jobs) <= 1:
+    for pair, duration in search_jobs:
       try:
-        if duration == 0:
-          trips, used_queries = search_same_day_flights(pair, normalized)
-        else:
-          trips, used_queries = search_flexible_dates(pair, normalized, duration)
+        trips, used_queries = run_search_job(pair, normalized, duration)
         candidates.extend(trips)
         query_count += used_queries
       except Exception as error:
         provider_errors.append(f"{format_route(pair)} / {duration} days: {short_error(error)}")
+  else:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_FLI_CONCURRENT_QUERIES) as executor:
+      future_to_job = {
+        executor.submit(run_search_job, pair, normalized, duration): (pair, duration)
+        for pair, duration in search_jobs
+      }
+      for future in concurrent.futures.as_completed(future_to_job):
+        pair, duration = future_to_job[future]
+        try:
+          trips, used_queries = future.result()
+          candidates.extend(trips)
+          query_count += used_queries
+        except Exception as error:
+          provider_errors.append(f"{format_route(pair)} / {duration} days: {short_error(error)}")
 
   if not candidates and provider_errors:
     raise RuntimeError("; ".join(provider_errors[:3]))
@@ -137,6 +151,28 @@ def sweep_monitor(monitor: dict) -> dict:
   }
   write_cache(sweep_cache, cache_key, result, SWEEP_CACHE_TTL_SECONDS)
   return result
+
+
+def build_search_jobs(monitor: dict) -> tuple[list[tuple[dict, int]], int]:
+  jobs = []
+  planned_queries = 0
+  skipped_jobs = 0
+  date_count = len(enumerate_dates(monitor["start_from"], monitor["start_to"]))
+  for pair in monitor["pairs"]:
+    for duration in range(monitor["trip_min"], monitor["trip_max"] + 1):
+      estimated_queries = date_count if duration == 0 else 1
+      if planned_queries + estimated_queries > MAX_FLI_QUERIES_PER_MONITOR:
+        skipped_jobs += 1
+        continue
+      jobs.append((pair, duration))
+      planned_queries += estimated_queries
+  return jobs, skipped_jobs
+
+
+def run_search_job(pair: dict, monitor: dict, duration: int) -> tuple[list[dict], int]:
+  if duration == 0:
+    return search_same_day_flights(pair, monitor)
+  return search_flexible_dates(pair, monitor, duration)
 
 
 def normalize_monitor(monitor: dict) -> dict:
@@ -724,6 +760,10 @@ def unique_values(values: list[str]) -> list[str]:
 
 def short_error(error: Exception) -> str:
   return " ".join(str(error).split())[:180]
+
+
+def pluralize(count: int, singular: str, plural: str) -> str:
+  return singular if count == 1 else plural
 
 
 def google_flights_url(origin: str, destination: str, depart: str, return_date: str) -> str:

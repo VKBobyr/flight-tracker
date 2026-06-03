@@ -57,13 +57,13 @@ Those settings keep the service inexpensive and limit abuse while the app is sti
 
 If you deploy from a prebuilt container instead of source, build and push this repository's `Dockerfile`, then deploy the image with the same Cloud Run limits.
 
-The server caches live fare results for matching trip setups before applying rate limits, and also caches each route/date/duration provider query so small trip edits can reuse recent results. Defaults are 6 hours of cached fare results, 12 uncached fare searches per browser client per hour, and 30 uncached fare searches per IP per hour. Tune them with:
+The server caches live fare results for matching trip setups before applying rate limits, and also caches each route/date/duration provider query so small trip edits can reuse recent results. Defaults are 6 hours of cached fare results, 12 uncached fare searches per browser client per hour, 30 uncached fare searches per IP per hour, and 2 concurrent Fli provider calls per trip search. Tune them with:
 
 ```sh
 gcloud run services update flight-tracker \
   --region us-central1 \
   --project flight-tracker-2606022310 \
-  --set-env-vars SWEEP_CACHE_TTL_SECONDS=21600,MAX_SWEEPS_PER_CLIENT_WINDOW=12,MAX_SWEEPS_PER_IP_WINDOW=30,RATE_WINDOW_SECONDS=3600
+  --set-env-vars SWEEP_CACHE_TTL_SECONDS=21600,MAX_SWEEPS_PER_CLIENT_WINDOW=12,MAX_SWEEPS_PER_IP_WINDOW=30,RATE_WINDOW_SECONDS=3600,MAX_FLI_CONCURRENT_QUERIES=2
 ```
 
 ## Security posture

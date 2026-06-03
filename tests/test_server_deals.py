@@ -102,5 +102,44 @@ class DealCurationTests(unittest.TestCase):
     self.assertEqual([entry["dealReason"] for entry in curated], ["Direct search", "Direct search"])
 
 
+class SearchPlanningTests(unittest.TestCase):
+  def setUp(self):
+    self.previous_limit = server.MAX_FLI_QUERIES_PER_MONITOR
+
+  def tearDown(self):
+    server.MAX_FLI_QUERIES_PER_MONITOR = self.previous_limit
+
+  def test_plans_one_search_per_pair_and_trip_length(self):
+    monitor = {
+      "pairs": [{"origin": "SFO", "destination": "SEA"}, {"origin": "SJC", "destination": "SEA"}],
+      "start_from": "2026-07-01",
+      "start_to": "2026-07-10",
+      "trip_min": 4,
+      "trip_max": 6,
+    }
+
+    jobs, skipped = server.build_search_jobs(monitor)
+
+    self.assertEqual(skipped, 0)
+    self.assertEqual(len(jobs), 6)
+    self.assertEqual(jobs[0][1], 4)
+    self.assertEqual(jobs[-1][1], 6)
+
+  def test_same_day_jobs_are_budgeted_by_start_date_count(self):
+    server.MAX_FLI_QUERIES_PER_MONITOR = 5
+    monitor = {
+      "pairs": [{"origin": "SFO", "destination": "SEA"}, {"origin": "SJC", "destination": "SEA"}],
+      "start_from": "2026-07-01",
+      "start_to": "2026-07-03",
+      "trip_min": 0,
+      "trip_max": 1,
+    }
+
+    jobs, skipped = server.build_search_jobs(monitor)
+
+    self.assertEqual([(job[0]["origin"], job[1]) for job in jobs], [("SFO", 0), ("SFO", 1), ("SJC", 1)])
+    self.assertEqual(skipped, 1)
+
+
 if __name__ == "__main__":
   unittest.main()

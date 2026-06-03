@@ -1765,15 +1765,17 @@ function formatMonitorRoutes(monitor) {
 function monitorRouteTitleHtml(monitor) {
   const pairs = monitor.pairs || [];
   if (!pairs.length) return `<h3 class="route-title">No airport pairs</h3>`;
+  const routeTokens = pairs.flatMap((pair, index) => [
+    ...(index ? [`<span class="route-separator" aria-hidden="true"></span>`] : []),
+    `<span class="route-token">
+      <span>${pair.origin}</span>
+      <span class="route-arrow" aria-hidden="true">→</span>
+      <span>${pair.destination}</span>
+    </span>`,
+  ]).join("");
   return `
     <h3 class="monitor-route-title" aria-label="Airport pairs">
-      ${pairs.map((pair) => `
-        <span class="route-token">
-          <span>${pair.origin}</span>
-          <span class="route-arrow" aria-hidden="true">→</span>
-          <span>${pair.destination}</span>
-        </span>
-      `).join("")}
+      ${routeTokens}
     </h3>
   `;
 }

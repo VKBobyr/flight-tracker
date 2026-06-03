@@ -1259,36 +1259,38 @@ button:disabled {
 .monitor-route-title {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
-  align-items: baseline;
+  gap: 5px 8px;
+  align-items: center;
   margin: 0 0 7px;
   color: var(--ink);
   font-size: 1.07rem;
-  line-height: 1.15;
+  line-height: 1;
   font-weight: 900;
 }
 
 .route-token {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-height: 1.2em;
+  line-height: 1;
   white-space: nowrap;
 }
 
-.route-token + .route-token::before {
+.route-separator {
+  display: inline-block;
+  flex: 0 0 auto;
   content: "";
   width: 4px;
   height: 4px;
-  margin-right: 2px;
   border-radius: 999px;
   background: rgba(90, 112, 126, 0.42);
-  align-self: center;
 }
 
 .route-arrow {
   color: var(--accent-dark);
   font-weight: 840;
+  line-height: 1;
 }
 
 .monitor-meta {
@@ -1661,10 +1663,9 @@ button:disabled {
     font-size: 0.96rem;
   }
 
-  .route-token + .route-token::before {
+  .route-separator {
     width: 3px;
     height: 3px;
-    margin-right: 1px;
   }
 
   .monitor-meta {

@@ -308,7 +308,7 @@ function storageState(value) {
 
 function sweepDataFromLegacyMonitors(monitors) {
   if (!Array.isArray(monitors)) return {};
-  return monitors.reduce((records, monitor) => {
+  return sanitizeSweepData(monitors.reduce((records, monitor) => {
     const normalized = normalizeMonitor({ ...monitor });
     if (normalized.topDeals.length || normalized.lastRunAt) {
       records[normalized.configSignature] = {
@@ -318,7 +318,7 @@ function sweepDataFromLegacyMonitors(monitors) {
       };
     }
     return records;
-  }, {});
+  }, {}));
 }
 
 function updateSweepStorageForMonitor(monitor) {
@@ -334,7 +334,7 @@ function updateSweepStorageForMonitor(monitor) {
 
 function attachStoredSweepData(monitor, sweepData) {
   monitor.configSignature = monitorConfigSignature(monitor);
-  const record = sweepData[monitor.configSignature];
+  const record = sanitizeSweepRecord(sweepData[monitor.configSignature]);
   if (!record) {
     monitor.history = [];
     monitor.topDeals = [];
@@ -347,6 +347,29 @@ function attachStoredSweepData(monitor, sweepData) {
   monitor.lastRunAt = record.lastRunAt || null;
   monitor.combinationCount = record.combinationCount;
   return monitor;
+}
+
+function sanitizeSweepData(sweepData) {
+  return Object.entries(sweepData || {}).reduce((records, [key, record]) => {
+    const nextRecord = sanitizeSweepRecord(record);
+    if (nextRecord) records[key] = nextRecord;
+    return records;
+  }, {});
+}
+
+function sanitizeSweepRecord(record) {
+  if (!record || typeof record !== "object") return null;
+  const topDeals = Array.isArray(record.topDeals) ? record.topDeals.map(normalizeDeal) : [];
+  const hasStaleAirlinePlaceholder = topDeals.some((deal) => (
+    deal.provider === "fli"
+    && normalizeAirlineName(deal.airlineName, deal.airlineCode) === AIRLINE_FALLBACK
+  ));
+  if (hasStaleAirlinePlaceholder) return null;
+  return {
+    topDeals,
+    lastRunAt: record.lastRunAt || null,
+    combinationCount: record.combinationCount,
+  };
 }
 
 function monitorConfigSignature(monitor) {
@@ -404,7 +427,7 @@ function coerceDateInput(value, fallback) {
 
 function normalizeState(value) {
   const monitors = value && Array.isArray(value.monitors) ? value.monitors.map(normalizeMonitor) : [];
-  const sweepData = value && value.sweepData && typeof value.sweepData === "object" ? value.sweepData : {};
+  const sweepData = sanitizeSweepData(value && value.sweepData && typeof value.sweepData === "object" ? value.sweepData : {});
   const sweepTime = value && value.lastSweepAt ? String(value.lastSweepAt) : null;
   monitors.forEach((monitor) => attachStoredSweepData(monitor, sweepData));
   return { monitors, sweepData, lastSweepAt: sweepTime };

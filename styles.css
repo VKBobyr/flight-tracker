@@ -1201,7 +1201,7 @@ button:disabled {
 .monitor-route-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px 6px;
   margin-bottom: 7px;
 }
 
@@ -1217,6 +1217,7 @@ button:disabled {
   font-size: 0.88rem;
   font-weight: 860;
   white-space: nowrap;
+  line-height: 1;
 }
 
 .monitor-meta {
@@ -1500,6 +1501,17 @@ button:disabled {
     margin-top: -2px;
   }
 
+  .monitor-route-pills {
+    gap: 4px 5px;
+    margin-bottom: 6px;
+  }
+
+  .route-pill {
+    min-height: 26px;
+    padding-inline: 9px;
+    font-size: 0.84rem;
+  }
+
   .deal-row {
     grid-template-columns: 1fr;
     gap: 10px;
@@ -1555,6 +1567,32 @@ button:disabled {
 
   .route-title {
     font-size: 0.98rem;
+  }
+
+  .monitor-card {
+    gap: 12px;
+  }
+
+  .monitor-card header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px;
+    gap: 8px;
+  }
+
+  .monitor-menu summary {
+    width: 32px;
+    height: 32px;
+  }
+
+  .monitor-route-pills {
+    gap: 3px 4px;
+    margin-bottom: 5px;
+  }
+
+  .route-pill {
+    min-height: 24px;
+    padding-inline: 8px;
+    font-size: 0.8rem;
   }
 
   .monitor-meta {

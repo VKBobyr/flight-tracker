@@ -1601,7 +1601,7 @@ function renderMonitors() {
       <header>
         <div>
           ${monitorRouteTitleHtml(monitor)}
-          <div class="monitor-meta">${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatStops(monitor.maxStops)} · ${formatPairCount(monitor.pairs.length)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</div>
+          <div class="monitor-meta">${formatDate(monitor.startFrom)}-${formatDate(monitor.startTo)} · ${monitor.tripMin}-${monitor.tripMax} days · ${formatStops(monitor.maxStops)} · ${formatExcludedAirlines(monitor.excludedAirlines)}</div>
         </div>
         <div class="monitor-header-actions">
           <details class="monitor-menu">

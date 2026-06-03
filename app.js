@@ -1617,9 +1617,9 @@ function renderMonitors() {
         <div class="metric"><span>Possible trips</span><strong>${formatInteger(travelWindowCount)}</strong></div>
         <div class="metric"><span>Latest sweep</span><strong>${monitor.lastRunAt ? formatDateTime(monitor.lastRunAt) : "Not run"}</strong></div>
       </div>
-      <section class="monitor-deals" aria-label="Top searches for this monitor">
+      <section class="monitor-deals" aria-label="Top results">
         <div class="monitor-deals-heading">
-          <h4>Top searches for this monitor</h4>
+          <h4>Top results</h4>
           ${monitor.topDeals.length ? "" : "<span>No sweep yet</span>"}
         </div>
         <div class="deals-list"></div>

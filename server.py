@@ -356,6 +356,7 @@ def flight_result_to_deal(pair: dict, result: object, depart: str, return_date: 
     "airlineCode": ", ".join(unique_values(airline_codes)),
     "airlineName": format_airline_names(airline_names),
     "stopCount": stop_count_from_flights(flights),
+    "flightMinutes": flight_duration_minutes(flights),
     "sourceName": "Google Flights",
     "sourceUrl": google_flights_url(pair["origin"], pair["destination"], depart, return_date),
     "provider": "fli",
@@ -410,6 +411,7 @@ def propagate_known_airlines(options: list[dict]) -> None:
       "airlineCode": option.get("airlineCode", ""),
       "airlineName": best_available_airline_label(option),
       "stopCount": option.get("stopCount"),
+      "flightMinutes": option.get("flightMinutes"),
     }
     for option in options
     if has_real_airline(option) or option.get("airlineCode")
@@ -424,6 +426,8 @@ def propagate_known_airlines(options: list[dict]) -> None:
     option["airlineName"] = known.get("airlineName", "")
     if option.get("stopCount") is None:
       option["stopCount"] = known.get("stopCount")
+    if option.get("flightMinutes") is None:
+      option["flightMinutes"] = known.get("flightMinutes")
 
 
 def apply_fare_bucket_airline_summary(deal: dict, options: list[dict]) -> None:
@@ -482,16 +486,39 @@ def enrich_single_deal_airline(deal: dict, monitor: dict) -> tuple[dict, int]:
     deal["airlineCode"] = best.get("airlineCode", "")
     deal["airlineName"] = best_available_airline_label(best)
     deal["stopCount"] = best.get("stopCount")
+    deal["flightMinutes"] = best.get("flightMinutes")
   else:
     deal["airlineName"] = best_available_airline_label(deal)
   if best:
     write_cache(
       flight_detail_cache,
       cache_key,
-      {"airlineCode": deal.get("airlineCode", ""), "airlineName": deal.get("airlineName", ""), "stopCount": deal.get("stopCount")},
+      {
+        "airlineCode": deal.get("airlineCode", ""),
+        "airlineName": deal.get("airlineName", ""),
+        "stopCount": deal.get("stopCount"),
+        "flightMinutes": deal.get("flightMinutes"),
+      },
       SWEEP_CACHE_TTL_SECONDS,
     )
   return deal, 1
+
+
+def flight_duration_minutes(flights: tuple) -> int | None:
+  durations = []
+  for flight in flights:
+    duration = getattr(flight, "duration", None)
+    if isinstance(duration, (int, float)) and duration > 0:
+      durations.append(int(duration))
+      continue
+    leg_durations = [
+      getattr(leg, "duration", None)
+      for leg in (getattr(flight, "legs", []) or [])
+    ]
+    leg_durations = [int(value) for value in leg_durations if isinstance(value, (int, float)) and value > 0]
+    if leg_durations:
+      durations.append(sum(leg_durations))
+  return sum(durations) if durations else None
 
 
 def stop_count_from_flights(flights: tuple) -> int | None:
@@ -732,6 +759,7 @@ def compact_related_deal(deal: dict) -> dict:
     "price": deal.get("price"),
     "currency": deal.get("currency", "USD"),
     "stopCount": deal.get("stopCount"),
+    "flightMinutes": deal.get("flightMinutes"),
     "maxStops": deal.get("maxStops"),
     "airlineName": deal.get("airlineName"),
     "airlineCode": deal.get("airlineCode"),

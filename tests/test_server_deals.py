@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 import server
 
@@ -198,6 +199,40 @@ class AirlineFilterModeTests(unittest.TestCase):
 
     self.assertEqual([airline.name for airline in exclude_kwargs["airlines_exclude"]], ["AS", "UA"])
     self.assertEqual([airline.name for airline in include_kwargs["airlines"]], ["AS", "UA"])
+
+
+class FlightDurationTests(unittest.TestCase):
+  def test_sums_outbound_and_return_flight_durations(self):
+    flights = (
+      SimpleNamespace(duration=335, legs=[]),
+      SimpleNamespace(duration=290, legs=[]),
+    )
+
+    self.assertEqual(server.flight_duration_minutes(flights), 625)
+
+  def test_falls_back_to_leg_durations(self):
+    flights = (
+      SimpleNamespace(duration=None, legs=[SimpleNamespace(duration=80), SimpleNamespace(duration=120)]),
+      SimpleNamespace(duration=None, legs=[SimpleNamespace(duration=95)]),
+    )
+
+    self.assertEqual(server.flight_duration_minutes(flights), 295)
+
+  def test_flight_result_to_deal_includes_total_flight_minutes(self):
+    result = (
+      SimpleNamespace(price=220, duration=150, stops=0, legs=[], primary_airline=None, primary_airline_name="United"),
+      SimpleNamespace(price=220, duration=165, stops=0, legs=[], primary_airline=None, primary_airline_name="United"),
+    )
+
+    output = server.flight_result_to_deal(
+      {"origin": "SFO", "destination": "SEA"},
+      result,
+      "2026-07-01",
+      "2026-07-05",
+      set(),
+    )
+
+    self.assertEqual(output["flightMinutes"], 315)
 
 
 if __name__ == "__main__":

@@ -1371,6 +1371,7 @@ function normalizeDeal(deal) {
     airlineName: normalizeAirlineName(deal.airlineName, deal.airlineCode),
     maxStops: normalizeMaxStops(deal.maxStops),
     stopCount: normalizeStopCount(deal.stopCount),
+    flightMinutes: normalizeFlightMinutes(deal.flightMinutes),
     sourceName: deal.sourceName || "Google Flights",
     sourceUrl: deal.sourceUrl || buildGoogleFlightsUrlFromDeal(deal),
     provider: deal.provider || "client",
@@ -1393,6 +1394,7 @@ function normalizeRelatedDeal(deal) {
     airlineName: normalizeAirlineName(deal.airlineName, deal.airlineCode),
     maxStops: normalizeMaxStops(deal.maxStops),
     stopCount: normalizeStopCount(deal.stopCount),
+    flightMinutes: normalizeFlightMinutes(deal.flightMinutes),
     sourceUrl: deal.sourceUrl || buildGoogleFlightsUrlFromDeal(deal),
   };
 }
@@ -1512,6 +1514,7 @@ function compactFareOption(deal) {
     returnDate: deal.returnDate,
     length: deal.length,
     stopCount: deal.stopCount,
+    flightMinutes: deal.flightMinutes,
     maxStops: deal.maxStops,
     airlineName: deal.airlineName,
     airlineCode: deal.airlineCode,
@@ -1655,7 +1658,7 @@ function fareEntriesFromGroups(groups) {
         sourceUrl: buildGoogleFlightsUrlFromDeal(option) || option.sourceUrl || deal.sourceUrl || "https://www.google.com/travel/flights",
         airlineDisplay: airline,
         airlineFilter: airline,
-        totalLength: totalTripLength(option.length),
+        flightMinutes: normalizeFlightMinutes(option.flightMinutes),
         bucketIndex,
         optionIndex,
       };
@@ -1767,8 +1770,17 @@ function compareFareEntryColumn(a, b, column) {
   if (column === "start") return String(a.depart || "").localeCompare(String(b.depart || ""));
   if (column === "end") return String(a.returnDate || "").localeCompare(String(b.returnDate || ""));
   if (column === "length") return Number(a.length || 0) - Number(b.length || 0);
-  if (column === "totalLength") return Number(a.totalLength || 0) - Number(b.totalLength || 0);
+  if (column === "flightMinutes") return compareNullableNumbers(a.flightMinutes, b.flightMinutes);
   return Number(a.price || 0) - Number(b.price || 0);
+}
+
+function compareNullableNumbers(a, b) {
+  const aValue = Number.isFinite(Number(a)) ? Number(a) : null;
+  const bValue = Number.isFinite(Number(b)) ? Number(b) : null;
+  if (aValue === null && bValue === null) return 0;
+  if (aValue === null) return 1;
+  if (bValue === null) return -1;
+  return aValue - bValue;
 }
 
 function compareFareEntryTiebreakers(a, b, column) {
@@ -1784,9 +1796,9 @@ function compareFareEntryTiebreakers(a, b, column) {
     const length = Number(a.length || 0) - Number(b.length || 0);
     if (length) return length;
   }
-  if (column !== "totalLength") {
-    const totalLength = Number(a.totalLength || 0) - Number(b.totalLength || 0);
-    if (totalLength) return totalLength;
+  if (column !== "flightMinutes") {
+    const flightMinutes = compareNullableNumbers(a.flightMinutes, b.flightMinutes);
+    if (flightMinutes) return flightMinutes;
   }
   if (column !== "end") {
     const end = String(a.returnDate || "").localeCompare(String(b.returnDate || ""));
@@ -1808,7 +1820,7 @@ function renderFareTable(monitorId, entries, view, isLoading = false) {
       ${renderSortHeader("start", "Start", view)}
       ${renderSortHeader("end", "End", view)}
       ${renderSortHeader("length", "Days", view)}
-      ${renderSortHeader("totalLength", "Total", view)}
+      ${renderSortHeader("flightMinutes", "Total", view)}
       <span>Airline</span>
       <span>Stops</span>
       ${renderSortHeader("price", "Price", view)}
@@ -1877,7 +1889,7 @@ function renderFareTableRow(entry) {
     <span>${formatDate(entry.depart)}</span>
     <span>${formatDate(entry.returnDate)}</span>
     <span>${formatDayCount(entry.length)}</span>
-    <span>${formatDayCount(entry.totalLength)}</span>
+    <span>${formatFlightDuration(entry.flightMinutes)}</span>
     <span>${entry.airlineDisplay ? escapeHtml(entry.airlineDisplay) : "&mdash;"}</span>
     <span>${formatDealStops(entry)}</span>
     <strong class="fare-row-price">${formatMoney(entry.price)}</strong>
@@ -2286,8 +2298,14 @@ function formatDayCount(value) {
   return `${formatInteger(days)} ${days === 1 ? "day" : "days"}`;
 }
 
-function totalTripLength(length) {
-  return Math.max(1, Math.trunc(Number(length) || 0) + 1);
+function formatFlightDuration(minutes) {
+  const totalMinutes = normalizeFlightMinutes(minutes);
+  if (totalMinutes === null) return "—";
+  const hours = Math.floor(totalMinutes / 60);
+  const remainder = totalMinutes % 60;
+  if (!hours) return `${remainder}m`;
+  if (!remainder) return `${hours}h`;
+  return `${hours}h ${remainder}m`;
 }
 
 function makeId() {
@@ -2385,6 +2403,12 @@ function normalizeStopCount(value) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : null;
+}
+
+function normalizeFlightMinutes(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
 }
 
 function formatDealStops(deal) {

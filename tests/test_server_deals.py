@@ -77,6 +77,20 @@ class DealCurationTests(unittest.TestCase):
 
     self.assertEqual(bucket["airlineName"], "")
 
+  def test_propagates_known_airline_to_matching_fare_option(self):
+    options = [
+      {**deal("SFO-SEA", 100, "2026-07-01", 4), "airlineName": "Alaska Airlines", "airlineCode": "AS", "stopCount": 0},
+      {**deal("SFO-SEA", 100, "2026-07-01", 4), "airlineName": server.AIRLINE_PLACEHOLDER, "airlineCode": "", "stopCount": None},
+      {**deal("SFO-SEA", 100, "2026-07-02", 4), "airlineName": server.AIRLINE_PLACEHOLDER, "airlineCode": ""},
+    ]
+
+    server.propagate_known_airlines(options)
+
+    self.assertEqual(options[1]["airlineName"], "Alaska Airlines")
+    self.assertEqual(options[1]["airlineCode"], "AS")
+    self.assertEqual(options[1]["stopCount"], 0)
+    self.assertEqual(options[2]["airlineName"], server.AIRLINE_PLACEHOLDER)
+
   def test_unpriced_deals_become_direct_searches(self):
     candidates = [
       {"route": "SFO → SEA", "origin": "SFO", "destination": "SEA", "depart": "2026-07-01", "returnDate": "2026-07-03", "length": 2},

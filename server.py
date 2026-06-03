@@ -352,9 +352,32 @@ def enrich_fare_bucket_airlines(deal: dict, excluded: set[str], max_stops: str) 
         next_option["airlineName"] = best_available_airline_label(next_option)
     options.append(next_option)
 
+  propagate_known_airlines(options)
   next_deal["fareOptions"] = [compact_related_deal(option) for option in options]
   apply_fare_bucket_airline_summary(next_deal, options)
   return next_deal, query_count
+
+
+def propagate_known_airlines(options: list[dict]) -> None:
+  known_by_trip = {
+    deal_identity(option): {
+      "airlineCode": option.get("airlineCode", ""),
+      "airlineName": best_available_airline_label(option),
+      "stopCount": option.get("stopCount"),
+    }
+    for option in options
+    if has_real_airline(option) or option.get("airlineCode")
+  }
+  for option in options:
+    if has_real_airline(option):
+      continue
+    known = known_by_trip.get(deal_identity(option))
+    if not known:
+      continue
+    option["airlineCode"] = known.get("airlineCode", "")
+    option["airlineName"] = known.get("airlineName", "")
+    if option.get("stopCount") is None:
+      option["stopCount"] = known.get("stopCount")
 
 
 def apply_fare_bucket_airline_summary(deal: dict, options: list[dict]) -> None:

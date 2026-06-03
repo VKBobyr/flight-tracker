@@ -1479,14 +1479,19 @@ function renderFareExplorer(monitor, deals) {
 
 function getFareView(monitorId) {
   if (!fareViewState.has(monitorId)) {
-    fareViewState.set(monitorId, { priceSort: "asc", lengths: new Set(), airlines: new Set() });
+    fareViewState.set(monitorId, { priceSort: "asc", routes: new Set(), lengths: new Set(), airlines: new Set() });
   }
   return fareViewState.get(monitorId);
 }
 
 function reconcileFareView(view, entries) {
+  if (!view.routes) view.routes = new Set();
+  if (!view.lengths) view.lengths = new Set();
+  if (!view.airlines) view.airlines = new Set();
+  const routes = new Set(entries.map((entry) => entry.routeFilter).filter(Boolean));
   const lengths = new Set(entries.map((entry) => String(entry.length)));
   const airlines = new Set(entries.map((entry) => entry.airlineFilter).filter(Boolean));
+  view.routes = new Set([...view.routes].filter((route) => routes.has(route)));
   view.lengths = new Set([...view.lengths].filter((length) => lengths.has(length)));
   view.airlines = new Set([...view.airlines].filter((airline) => airlines.has(airline)));
 }
@@ -1496,15 +1501,19 @@ function fareEntriesFromGroups(groups) {
     const options = normalizedFareOptions(deal);
     return options.map((option, optionIndex) => {
       const price = hasPrice(option.price) ? Number(option.price) : Number(deal.price);
+      const route = option.route || `${option.origin} → ${option.destination}`;
+      const airline = knownAirlineName(option.airlineName, option.airlineCode)
+        || knownAirlineName(deal.airlineName, deal.airlineCode);
       return {
         ...option,
         price,
         currency: option.currency || deal.currency || "USD",
-        route: option.route || `${option.origin} → ${option.destination}`,
+        route,
+        routeFilter: route,
         sourceName: option.sourceName || deal.sourceName || "Google Flights",
         sourceUrl: buildGoogleFlightsUrlFromDeal(option) || option.sourceUrl || deal.sourceUrl || "https://www.google.com/travel/flights",
-        airlineDisplay: knownAirlineName(option.airlineName, option.airlineCode) || "Airline not shown",
-        airlineFilter: knownAirlineName(option.airlineName, option.airlineCode) || "Airline not shown",
+        airlineDisplay: airline,
+        airlineFilter: airline,
         bucketIndex,
         optionIndex,
       };
@@ -1518,9 +1527,11 @@ function renderFareControls(monitorId, entries, view, visibleCount) {
   const lengths = [...new Set(entries.map((entry) => Number(entry.length)))]
     .filter((length) => Number.isFinite(length))
     .sort((a, b) => a - b);
+  const routes = uniqueValues(entries.map((entry) => entry.routeFilter).filter(Boolean)).sort();
   const airlines = uniqueValues(entries.map((entry) => entry.airlineFilter).filter(Boolean)).sort();
   controls.innerHTML = `
     <div class="fare-count">${formatInteger(visibleCount)} of ${formatInteger(entries.length)} fares</div>
+    ${renderFilterDropdownHtml("Airport pairs", "routes", routes.map((route) => ({ value: route, label: route })), view.routes)}
     ${renderFilterDropdownHtml("Trip length", "lengths", lengths.map((length) => ({ value: String(length), label: formatDayCount(length) })), view.lengths)}
     ${renderFilterDropdownHtml("Airlines", "airlines", airlines.map((airline) => ({ value: airline, label: airline })), view.airlines)}
     <button class="fare-reset" type="button" data-fare-reset>Reset</button>
@@ -1540,6 +1551,7 @@ function renderFareControls(monitorId, entries, view, visibleCount) {
   });
   controls.querySelector("[data-fare-reset]").addEventListener("click", () => {
     view.priceSort = "asc";
+    view.routes.clear();
     view.lengths.clear();
     view.airlines.clear();
     render();
@@ -1584,7 +1596,8 @@ function renderFilterDropdownHtml(label, kind, options, selected) {
 
 function filterFareEntries(entries, view) {
   return entries.filter((entry) => (
-    (!view.lengths.size || view.lengths.has(String(entry.length)))
+    (!view.routes.size || view.routes.has(entry.routeFilter))
+    && (!view.lengths.size || view.lengths.has(String(entry.length)))
     && (!view.airlines.size || view.airlines.has(entry.airlineFilter))
   ));
 }
@@ -1636,7 +1649,7 @@ function renderFareTableRow(entry) {
   row.innerHTML = `
     <strong>${escapeHtml(entry.route)}</strong>
     <span>${formatDate(entry.depart)}-${formatDate(entry.returnDate)} · ${formatDayCount(entry.length)}</span>
-    <span>${escapeHtml(entry.airlineDisplay)}</span>
+    <span>${entry.airlineDisplay ? escapeHtml(entry.airlineDisplay) : "&mdash;"}</span>
     <span>${formatDealStops(entry)}</span>
     <strong class="fare-row-price">${formatMoney(entry.price)}</strong>
     <em aria-label="Open in Google Flights">↗</em>

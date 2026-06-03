@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlparse
 
 try:
   from fli.core import build_date_search_segments, build_flight_segments
@@ -41,6 +41,14 @@ RATE_WINDOW_SECONDS = int(os.environ.get("RATE_WINDOW_SECONDS", "3600"))
 MAX_SWEEPS_PER_CLIENT_WINDOW = int(os.environ.get("MAX_SWEEPS_PER_CLIENT_WINDOW", "12"))
 MAX_SWEEPS_PER_IP_WINDOW = int(os.environ.get("MAX_SWEEPS_PER_IP_WINDOW", "30"))
 rate_limit_hits: dict[str, list[float]] = {}
+PUBLIC_STATIC_PATHS = {
+  "/",
+  "/index.html",
+  "/app.js",
+  "/styles.css",
+  "/travel-windows.js",
+}
+PUBLIC_STATIC_PREFIXES = ("/assets/",)
 
 
 def fli_available() -> bool:
@@ -441,6 +449,12 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, directory=str(ROOT), **kwargs)
 
+  def send_head(self):
+    if not self.is_public_static_path():
+      self.send_error(HTTPStatus.NOT_FOUND)
+      return None
+    return super().send_head()
+
   def do_POST(self) -> None:
     if self.path != "/api/sweep":
       self.send_error(HTTPStatus.NOT_FOUND)
@@ -468,6 +482,10 @@ class FlightTrackerHandler(SimpleHTTPRequestHandler):
     raw_client = self.headers.get("X-Flight-Tracker-Client", "")
     clean_client = "".join(char for char in raw_client if char.isalnum() or char in "-_")[:80]
     return clean_client or "anonymous"
+
+  def is_public_static_path(self) -> bool:
+    path = unquote(urlparse(self.path).path)
+    return path in PUBLIC_STATIC_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_STATIC_PREFIXES)
 
   def send_json(self, value: dict, status: HTTPStatus = HTTPStatus.OK, headers: dict[str, str] | None = None) -> None:
     body = json.dumps(value).encode("utf-8")
